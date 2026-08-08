@@ -143,7 +143,7 @@ def _classify(agent: ChatAgent, email_text: str, jobs_ctx: list, company_name=No
                 "summary": "Keine Stellen im Board zum Abgleich."}
     # Pre-filter with high-signal fields: sender + subject FIRST (sender display name
     # and domain almost always contain the company, body often doesn't).
-    # e.g. "BMW Group Recruiting <noreply@bmwgroup.com>" → BMW
+    # e.g. "Acme Corp Recruiting <noreply@acmecorp.com>" → Acme Corp
     email_lower = email_text[:3000].lower()
     header_lower = email_text.split("\n\n", 1)[0][:600].lower()  # FROM/SUBJECT block
     candidate_ids = []
@@ -151,7 +151,7 @@ def _classify(agent: ChatAgent, email_text: str, jobs_ctx: list, company_name=No
         company_lower = (j["company"] or "").lower()
         if not company_lower or len(company_lower) <= 2:
             continue
-        # Also match short forms: "bmw" matches "bmwgroup.com", "mercedes" in "mercedes-benz"
+        # Also match short forms: "acme" matches "acmecorp.com", "mercedes" in "mercedes-benz"
         if company_lower in header_lower or company_lower in email_lower:
             candidate_ids.append(j)
     if not candidate_ids:

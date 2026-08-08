@@ -57,7 +57,7 @@ def main():
 
     app_id = settings.get("adzuna_app_id", "").strip()
     app_key = settings.get("adzuna_app_key", "").strip()
-    location = settings.get("default_location", "Berlin").strip()
+    location = settings.get("default_location", "").strip()
     agent = ChatAgent(
         settings.get("api_key", ""),
         settings.get("llm_model", "deepseek-chat"),
@@ -69,7 +69,7 @@ def main():
 
     # 1. Search Adzuna (Berlin + Deutschland) + RemoteOK
     all_results = []
-    for loc, loc_label in [(location, "Berlin"), ("", "Deutschland")]:
+    for loc, loc_label in [(location, location or "Default"), ("", "Deutschland")]:
         print(f"🔍 Adzuna ({loc_label}) …", file=sys.stderr)
         for q in QUERIES:
             try:
@@ -122,11 +122,19 @@ def main():
             j["summary"] = ""
         scored.append(j)
 
-    scored.sort(key=lambda x: (0 if "berlin" in str(x.get("location", "")).lower() else 1, -x["score"]))
     # 3b. Preference boost (companies / content keywords / locations)
     pref_companies = [c.strip().lower() for c in (settings.get("prefer_companies", "") or "").replace(",", " ").split() if c.strip()]
     pref_keywords = [k.strip().lower() for k in (settings.get("prefer_keywords", "") or "").replace(",", " ").split() if k.strip()]
     pref_locs = [l.strip().lower() for l in (settings.get("prefer_locations", "") or "").replace(",", " ").split() if l.strip()]
+
+    def _loc_rank(x):
+        """0 = preferred location match (or no preference configured), 1 = other."""
+        loc = str(x.get("location", "")).lower()
+        if pref_locs:
+            return 0 if any(p in loc for p in pref_locs) else 1
+        return 0  # no preference → score decides
+
+    scored.sort(key=lambda x: (_loc_rank(x), -x["score"]))
     for j in scored:
         boost = 0
         hay = (j.get("title", "") + " " + (j.get("description") or "")[:800]).lower()
@@ -138,7 +146,7 @@ def main():
         if any(l in str(j.get("location", "")).lower() for l in pref_locs):
             boost += 4
         j["score"] = min(j["score"] + boost, 100)
-    scored.sort(key=lambda x: (0 if "berlin" in str(x.get("location", "")).lower() else 1, -x["score"]))
+    scored.sort(key=lambda x: (_loc_rank(x), -x["score"]))
     top = scored[:10]
 
     # 4. Print

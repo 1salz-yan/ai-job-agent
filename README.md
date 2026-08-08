@@ -21,7 +21,7 @@ telemetry. You bring your own API keys.
   on *your confirmed profile data* (never fabricated)
 - 🗣️ **Interview questions** — 8–10 likely questions with answer hints
 - 🔍 **Job search** — Adzuna DE + RemoteOK (web3/blockchain/iot), optional BA
-  Jobbörse. Daily/manual recommendations with Berlin-first sorting
+ Jobbörse. Daily/manual recommendations sorted by your preferred locations
 - 📬 **Email monitoring** — IMAP inbox polling, AI classifies replies
   (rejected/interview/offer/confirmed/note), one-click apply to the board
 - 📊 **Dashboard** — KPI cards, status distribution chart, monthly trend,
@@ -139,9 +139,9 @@ In **📊 Dashboard → Such-Präferenzen** you can set:
 
 | Field | Effect |
 |---|---|
-| Bevorzugte Firmen | +6 score if the company matches (e.g. `Bosch, Siemens`) |
-| Bevorzugte Orte | +4 score if the location matches (e.g. `Berlin, München`) |
-| Bevorzugte Themen | +2 per matched keyword, max +6 (e.g. `Datenanalyse, IoT`) |
+| Bevorzugte Firmen | +6 score if the company matches (e.g. `TechCorp, AlphaBank`) |
+| Bevorzugte Orte | +4 score if the location matches (e.g. `Köln, Hamburg`) |
+| Bevorzugte Themen | +2 per matched keyword, max +6 (e.g. `Prozessoptimierung, Automatisierung`) |
 | Ausschließen | jobs matching these keywords are filtered out entirely (e.g. `HR, Personalwesen`) |
 
 Click **🔄 Stellen suchen & bewerten** on the dashboard to run a search with

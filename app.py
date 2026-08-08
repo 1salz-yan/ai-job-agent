@@ -199,12 +199,12 @@ def _seed_settings_from_env(db):
         db.execute(
             "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)",
             (key, {"llm_model": "deepseek-chat", "api_base": "",
-                   "default_location": "Berlin",
-                   "default_query": "Werkstudent Wirtschaftsingenieurwesen",
+                   "default_location": "",
+                   "default_query": "Praktikum Wirtschaftsingenieurwesen",
                    "email_imap_host": "imap.example.com", "email_imap_port": "993",
                    "email_address": "", "email_poll_interval": "15",
                    "exclude_keywords": "HR, Personalwesen, Sachbearbeitung, Personal, Admin",
-                   "prefer_companies": "", "prefer_keywords": "", "prefer_locations": "Berlin"}[key]),
+                   "prefer_companies": "", "prefer_keywords": "", "prefer_locations": ""}[key]),
         )
 
 
