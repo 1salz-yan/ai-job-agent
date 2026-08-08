@@ -157,7 +157,7 @@ these preferences. Top 10 results land in the Kanban **Merkliste**.
   📄 Lebenslauf anpassen, 🗣️ Interview-Fragen, timeline (Zeitverlauf),
   and 📥 .docx export with "Im Finder zeigen".
 - **Jobsuche**: paste a JD URL or text → extract → "Bewerten & merken".
-- Generated documents are saved to `~/Desktop/Application/<YYMMDD>_<Company>_<City>_<Role>/`
+- Generated documents are saved to `~/Desktop/Bewerbung/Bewerbung/<YYMMDD>_<Company>_<City>_<Role>/`
   (folder + filenames include a short role slug so multiple applications to the
   same company on the same day never overwrite each other; long company names
   are abbreviated, e.g. PricewaterhouseCoopers → PwC, to keep filenames
