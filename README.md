@@ -34,10 +34,12 @@ telemetry. You bring your own API keys.
 ## Requirements
 
 - Python 3.10+
-- A [DeepSeek API key](https://platform.deepseek.com/) (paid, very cheap; the
-  only mandatory key)
+- An API key for an OpenAI-compatible chat API. Default: [DeepSeek](https://platform.deepseek.com/)
+  (paid, very cheap). Any provider exposing an OpenAI-style `/chat/completions`
+  endpoint works — set the base URL in `.env` (`DEEPSEEK_API_BASE`) or in
+  ⚙️ Einstellungen.
 - Optional: [Adzuna API](https://developer.adzuna.com/) (free) for job search,
-  an IMAP-enabled mailbox (e.g. QQ Mail / GMail) for email monitoring
+  any IMAP-enabled mailbox (QQ Mail, GMail, Outlook, …) for email monitoring
 
 ---
 
@@ -83,13 +85,16 @@ Go to **👤 Profil** and fill in your real, confirmed facts:
 > this profile only. The prompts forbid fabricating anything. What you put in
 > the profile is what gets written — nothing more.
 
-### 2. DeepSeek API (required)
+### 2. Chat API (required — any OpenAI-compatible provider)
 
-1. Create an account at https://platform.deepseek.com and add a small credit.
-2. Create an API key.
-3. Add it either:
-   - in the **⚙️ Einstellungen** tab of the dashboard, or
-   - in `.env` as `DEEPSEEK_API_KEY=sk-...`
+1. The app calls `/chat/completions` on the base URL with a Bearer token.
+2. Default provider: **DeepSeek** — create an account at
+   https://platform.deepseek.com, add credit, create an API key.
+3. Other providers: any OpenAI-compatible endpoint works. Set the base URL via
+   `DEEPSEEK_API_BASE` in `.env` (e.g. `https://api.openai.com/v1`) or in
+   ⚙️ Einstellungen.
+4. Add the key either in the **⚙️ Einstellungen** tab or in `.env` as
+   `DEEPSEEK_API_KEY=sk-...`.
 
 Model is configurable (`deepseek_model`, default `deepseek-chat`).
 
@@ -109,14 +114,17 @@ Model is configurable (`deepseek_model`, default `deepseek-chat`).
 
 ### 4. Email monitoring (optional)
 
-1. Enable IMAP on your mailbox. For **QQ Mail** (Foxmail):
-   设置 → 账户 → 开启 POP3/IMAP/SMTP → 生成授权码 (an app-specific *auth code*,
-   not your login password).
+Works with any IMAP-enabled mailbox.
+
+1. Enable IMAP on your mailbox:
+   - **QQ Mail / Foxmail**: 设置 → 账户 → 开启 POP3/IMAP/SMTP → 生成授权码
+     (an app-specific *auth code*, not your login password)
+   - **GMail**: enable IMAP in settings → create an App Password (2FA required)
+   - **Outlook**: IMAP host `outlook.office365.com:993`
 2. In **⚙️ Einstellungen** set:
-   - `email_imap_host`: `imap.qq.com`
-   - `email_imap_port`: `993`
-   - `email_address`: your address
-   - `email_password`: the **授权码** (auth code)
+   - `email_imap_host` / `email_imap_port` (e.g. `imap.qq.com:993`)
+   - `email_address`
+   - `email_password` — the app-specific password / auth code
 3. Click **📬 Posteingang → Jetzt prüfen**.
 
 Each found email is AI-classified (Absage / Interview / Angebot / Bestätigung /

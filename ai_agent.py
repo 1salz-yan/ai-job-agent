@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
-"""DeepSeek-basierter Bewerbungs-Agent (JSON-Mode für Struktur, Plaintext für Langtexte)."""
-import json, re, requests
+"""OpenAI-kompatibler Bewerbungs-Agent (JSON-Mode für Struktur, Plaintext für Langtexte).
 
-API_URL = "https://api.deepseek.com/chat/completions"
+Standard-Endpunkt: DeepSeek. Jeder OpenAI-kompatible Chat-Endpunkt funktioniert
+(API-Base-URL konfigurierbar über Settings / Umgebungsvariable DEEPSEEK_API_BASE).
+"""
+import json, os, re, requests
+
+DEFAULT_API_BASE = "https://api.deepseek.com"
 
 HONESTY_RULES = """STRENGE EHRLICHKEITSREGELN (niemals verletzen):
 - Erfinde NICHTS, übertreibe nichts. Nur bestätigte Profil-Fakten (Profil-Datenbank).
@@ -21,22 +25,26 @@ class JobAgentError(Exception):
 
 
 class DeepSeekAgent:
-    def __init__(self, api_key, model="deepseek-chat"):
+    """OpenAI-kompatibler Chat-Client (Standard: DeepSeek, Base-URL konfigurierbar)."""
+
+    def __init__(self, api_key, model="deepseek-chat", api_base=None):
         self.api_key = (api_key or "").strip()
         self.model = model or "deepseek-chat"
+        self.api_base = (api_base or os.getenv("DEEPSEEK_API_BASE", "") or DEFAULT_API_BASE).rstrip("/")
+        self._url = f"{self.api_base}/chat/completions"
 
     def _call(self, messages, temperature=0.6, max_tokens=4000, json_mode=True):
         if not self.api_key:
-            raise JobAgentError("DeepSeek API-Key fehlt.")
+            raise JobAgentError("API-Key fehlt (DeepSeek oder anderer OpenAI-kompatibler Anbieter).")
         body = {"model": self.model, "messages": messages, "temperature": temperature, "max_tokens": max_tokens}
         if json_mode:
             body["response_format"] = {"type": "json_object"}
         try:
-            resp = requests.post(API_URL, headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}, json=body, timeout=180)
+            resp = requests.post(self._url, headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}, json=body, timeout=180)
         except requests.RequestException as e:
-            raise JobAgentError(f"Keine Verbindung zu DeepSeek: {e}") from e
+            raise JobAgentError(f"Keine Verbindung zum API-Endpunkt: {e}") from e
         if resp.status_code != 200:
-            raise JobAgentError(f"DeepSeek Fehler (HTTP {resp.status_code}): {resp.text[:300]}")
+            raise JobAgentError(f"API Fehler (HTTP {resp.status_code}): {resp.text[:300]}")
         return resp.json()["choices"][0]["message"]["content"]
 
     def _chat(self, messages, **kw):

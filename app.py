@@ -172,6 +172,7 @@ def _seed_profile(db):
 def _seed_settings_from_env(db):
     for env_key, db_key in [
         ("DEEPSEEK_API_KEY", "deepseek_api_key"),
+        ("DEEPSEEK_API_BASE", "deepseek_api_base"),
         ("ADZUNA_APP_ID", "adzuna_app_id"),
         ("ADZUNA_APP_KEY", "adzuna_app_key"),
         ("BA_API_KEY", "ba_api_key"),
@@ -184,15 +185,16 @@ def _seed_settings_from_env(db):
             db.execute(
                 "INSERT INTO settings (key, value) VALUES (?, ?)", (db_key, val)
             )
-    for key in ("deepseek_model", "default_location", "default_query",
+    for key in ("deepseek_model", "deepseek_api_base", "default_location", "default_query",
                 "email_imap_host", "email_imap_port", "email_address",
                 "email_poll_interval", "exclude_keywords",
                 "prefer_companies", "prefer_keywords", "prefer_locations"):
         db.execute(
             "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)",
-            (key, {"deepseek_model": "deepseek-chat", "default_location": "Berlin",
+            (key, {"deepseek_model": "deepseek-chat", "deepseek_api_base": "",
+                   "default_location": "Berlin",
                    "default_query": "Werkstudent Wirtschaftsingenieurwesen",
-                   "email_imap_host": "imap.qq.com", "email_imap_port": "993",
+                   "email_imap_host": "imap.example.com", "email_imap_port": "993",
                    "email_address": "", "email_poll_interval": "15",
                    "exclude_keywords": "HR, Personalwesen, Sachbearbeitung, Personal, Admin",
                    "prefer_companies": "", "prefer_keywords": "", "prefer_locations": "Berlin"}[key]),
@@ -252,7 +254,11 @@ def _get_settings() -> dict:
 
 
 def _agent(settings: dict) -> DeepSeekAgent:
-    return DeepSeekAgent(settings.get("deepseek_api_key"), settings.get("deepseek_model"))
+    return DeepSeekAgent(
+        settings.get("deepseek_api_key"),
+        settings.get("deepseek_model"),
+        settings.get("deepseek_api_base"),
+    )
 
 
 def _profile_row() -> dict:
@@ -364,7 +370,8 @@ def get_settings():
 @app.put("/api/settings")
 def put_settings():
     data = request.get_json(force=True, silent=True) or {}
-    allowed = {"deepseek_api_key", "deepseek_model", "adzuna_app_id", "adzuna_app_key",
+    allowed = {"deepseek_api_key", "deepseek_model", "deepseek_api_base",
+               "adzuna_app_id", "adzuna_app_key",
                "ba_api_key", "default_location", "default_query",
                "email_imap_host", "email_imap_port", "email_address",
                "email_password", "email_poll_interval", "exclude_keywords",

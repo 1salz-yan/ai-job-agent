@@ -61,6 +61,7 @@ def main():
     agent = DeepSeekAgent(
         settings.get("deepseek_api_key", ""),
         settings.get("deepseek_model", "deepseek-chat"),
+        settings.get("deepseek_api_base", ""),
     )
     if not app_id or not app_key:
         print("Adzuna-Keys fehlen.")

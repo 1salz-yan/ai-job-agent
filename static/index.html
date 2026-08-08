@@ -141,7 +141,7 @@
 
     <div class="card">
       <h3>⚙️ E-Mail-Zugang</h3>
-      <p class="muted">QQ/foxmail: imap.qq.com:993 + 授权码 (QQ邮箱设置 → 账户 → POP3/IMAP/SMTP 开启 → 生成授权码)</p>
+      <p class="muted">Jeder IMAP-Anbieter funktioniert. Beispiele: QQ/Foxmail: imap.qq.com:993 + 授权码; Gmail: imap.gmail.com:993 + App-Passwort; Outlook: outlook.office365.com:993. Immer App-Passwort/授权码 verwenden, nicht das Login-Passwort.</p>
       <div class="row-form" style="margin-top:8px">
         <input id="em-host" type="text" placeholder="IMAP Host (imap.qq.com)">
         <input id="em-port" type="text" placeholder="Port (993)" style="max-width:80px">
@@ -197,10 +197,12 @@
     <div class="card">
       <h2>⚙️ Einstellungen</h2>
       <form id="settings-form" class="stack-form">
-        <h3>DeepSeek (AI)</h3>
+        <h3>Chat-API (AI, OpenAI-kompatibel)</h3>
         <label>API-Key <input name="deepseek_api_key" type="password" placeholder="sk-…"></label>
+        <label>API Base URL (leer = DeepSeek Standard)
+          <input name="deepseek_api_base" type="text" placeholder="https://api.deepseek.com"></label>
         <label>Modell
-          <select name="deepseek_model">
+         <select name="deepseek_model">
             <option value="deepseek-chat">deepseek-chat</option>
             <option value="deepseek-reasoner">deepseek-reasoner</option>
           </select>
