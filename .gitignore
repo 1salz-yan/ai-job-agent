@@ -1,0 +1,31 @@
+# Secrets & local data
+.env
+*.db
+*.sqlite
+*.sqlite3
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# macOS
+.DS_Store
+.CFUserTextEncoding
+
+# Hermes agent skills (not part of this app)
+.agents/
+
+# Tool caches (codex runtimes etc.)
+.cache/
+
+# Generated / personal
+Desktop/
+Bewerbung/
+*.docx
+*.pdf
+
+# Editor
+.idea/
+.vscode/

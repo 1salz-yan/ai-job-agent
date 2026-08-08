@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Job Agent</title>
+<link rel="stylesheet" href="/static/style.css?v=light5">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="logo">▦</span>
+    <div>
+      <h1>AI Job Agent</h1>
+      <p class="sub">Bewerbungs-Dashboard</p>
+    </div>
+  </div>
+  <nav class="tabs" id="tabs">
+    <button class="tab active" data-tab="dashboard">📊 Dashboard</button>
+    <button class="tab" data-tab="kanban">📋 Kanban</button>
+    <button class="tab" data-tab="search">🔍 Jobsuche</button>
+    <button class="tab" data-tab="email">📬 Posteingang</button>
+    <button class="tab" data-tab="analyze">📊 Analyse</button>
+    <button class="tab" data-tab="profile">👤 Profil</button>
+    <button class="tab" data-tab="settings">⚙️ Einstellungen</button>
+  </nav>
+</header>
+
+<main>
+  <!-- ================= DASHBOARD ================= -->
+  <section id="tab-dashboard" class="tab-panel">
+    <div class="dash-head">
+      <h2 style="font-size:16px;font-weight:600">Übersicht</h2>
+      <button id="btn-rec-refresh" class="btn primary">🔄 Stellen suchen & bewerten</button>
+    </div>
+    <div class="stats-row" id="dash-stats"></div>
+    <div class="charts-row">
+      <div class="card chart-box"><h3>Status-Verteilung</h3><canvas id="chart-status"></canvas></div>
+      <div class="card chart-box"><h3>Bewerbungen pro Monat</h3><canvas id="chart-monthly"></canvas></div>
+    </div>
+    <div id="rec-status" class="muted" style="margin-top:10px"></div>
+    <div class="card" style="margin-top:14px">
+      <h3>⚙️ Such-Präferenzen</h3>
+      <p class="muted" style="font-size:12px;margin:4px 0 8px">Wunsch-Firmen, Themen und Orte bekommen bei der Bewertung Bonus-Punkte. Ausgeschlossene Stichwörter werden herausgefiltert. Kommagetrennt.</p>
+      <div class="pref-grid">
+        <label class="pref-field">🏢 Bevorzugte Firmen
+          <input id="pref-companies" type="text" placeholder="z.B. KPMG, Bosch, Siemens"></label>
+        <label class="pref-field">📌 Bevorzugte Orte
+          <input id="pref-locations" type="text" placeholder="z.B. Berlin, München, Hamburg"></label>
+        <label class="pref-field">💡 Bevorzugte Themen
+          <input id="pref-keywords" type="text" placeholder="z.B. Datenanalyse, Web3, IoT, Supply Chain"></label>
+        <label class="pref-field">🚫 Ausschließen
+          <input id="pref-exclude" type="text" placeholder="z.B. HR, Personalwesen, Sachbearbeitung"></label>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:10px">
+        <button id="btn-save-prefs" class="btn">Speichern</button>
+        <span id="pref-status" class="muted" style="font-size:11px"></span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= KANBAN ================= -->
+  <section id="tab-kanban" class="tab-panel" hidden>
+    <div class="kanban-toolbar">
+      <button id="btn-add-job" class="btn primary">+ Stelle hinzufügen</button>
+      <input id="kb-search" type="search" placeholder="🔍 Suchen: Firma, Titel, Ort…" style="max-width:240px">
+      <select id="kb-type" style="max-width:170px">
+        <option value="">Alle Typen</option>
+        <option value="praktikum">Praktikum</option>
+        <option value="pflichtpraktikum">Pflichtpraktikum</option>
+        <option value="junior">Junior</option>
+        <option value="trainee">Trainee</option>
+        <option value="werkstudent">Werkstudent</option>
+        <option value="abschlussarbeit">Abschlussarbeit</option>
+      </select>
+      <span id="kanban-stats" class="muted"></span>
+    </div>
+    <div id="kanban" class="kanban"></div>
+    <div id="trash-zone" title="Karte hierher ziehen zum Löschen">
+      <span class="trash-ico">🗑️</span><span class="trash-label">Zum Löschen hierher ziehen</span>
+    </div>
+  </section>
+
+  <!-- ================= STATUS VIEW PANEL ================= -->
+  <div id="status-modal" class="status-panel" hidden>
+    <div class="status-panel-head">
+      <h2 id="status-modal-title"></h2>
+      <button class="modal-close" data-close-status>✕</button>
+    </div>
+    <div class="status-search-wrap">
+      <input id="status-search" type="search" placeholder="🔍 In dieser Liste suchen…">
+    </div>
+    <div id="status-list" class="status-list"></div>
+  </div>
+
+  <!-- ================= JOBSUCHE ================= -->
+  <section id="tab-search" class="tab-panel" hidden>
+    <div class="card">
+      <h2>🔍 Stellen suchen</h2>
+      <form id="search-form" class="row-form">
+        <input id="s-query" type="text" placeholder="z.B. Werkstudent Projektmanagement" required>
+        <input id="s-location" type="text" placeholder="Ort (z.B. Berlin)">
+        <select id="s-source">
+          <option value="both">Adzuna + BA Jobbörse</option>
+          <option value="adzuna">Nur Adzuna</option>
+          <option value="ba">Nur BA Jobbörse</option>
+        </select>
+        <button class="btn primary" type="submit">Suchen</button>
+      </form>
+      <div id="search-errors" class="errors"></div>
+      <div id="search-results" class="results"></div>
+    </div>
+
+    <div class="card">
+      <h2>🧩 JD einfügen (URL oder Text)</h2>
+      <p class="muted">Stellenanzeige per Link laden oder Text einfügen — der Agent extrahiert alle Daten und bewertet die Stelle.</p>
+      <form id="extract-form" class="row-form">
+        <input id="e-url" type="url" placeholder="https://…/stellenanzeige">
+        <button class="btn" type="submit">URL laden</button>
+      </form>
+      <textarea id="e-text" rows="8" placeholder="…oder Stellenanzeige hier einfügen (Text)"></textarea>
+      <button id="e-extract" class="btn primary">Extrahieren & analysieren</button>
+      <div id="extract-result" class="results"></div>
+    </div>
+  </section>
+
+  <!-- ================= POSTEINGANG ================= -->
+  <section id="tab-email" class="tab-panel" hidden>
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <h2>📬 Posteingang</h2>
+        <button id="btn-check-mail" class="btn primary">📥 Jetzt prüfen</button>
+      </div>
+      <p class="muted" style="margin:4px 0 8px">IMAP-Polling über deine E-Mail (in Einstellungen konfigurieren). AI klassifiziert Bewerbungs-Mails automatisch.</p>
+      <div id="email-errors" class="errors"></div>
+      <div id="email-spinner" hidden>Prüfe Posteingang… ⏳</div>
+      <div id="email-list" class="results"></div>
+    </div>
+
+    <div class="card">
+      <h3>⚙️ E-Mail-Zugang</h3>
+      <p class="muted">QQ/foxmail: imap.qq.com:993 + 授权码 (QQ邮箱设置 → 账户 → POP3/IMAP/SMTP 开启 → 生成授权码)</p>
+      <div class="row-form" style="margin-top:8px">
+        <input id="em-host" type="text" placeholder="IMAP Host (imap.qq.com)">
+        <input id="em-port" type="text" placeholder="Port (993)" style="max-width:80px">
+        <input id="em-addr" type="email" placeholder="E-Mail-Adresse">
+        <input id="em-pw" type="password" placeholder="授权码 / App-Passwort">
+        <button id="em-save" class="btn">Speichern & testen</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= ANALYSE ================= -->
+  <section id="tab-analyze" class="tab-panel" hidden>
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <h2>📊 Karriere-Analyse</h2>
+        <button id="btn-analyze" class="btn primary">🔄 Analyse starten</button>
+      </div>
+      <p class="muted">AI analysiert deine bewerteten Stellen und dein Profil. Identifiziert Muster, Lücken und gibt strategische Empfehlungen.</p>
+      <div id="analyze-spinner" hidden>Analysiere deine Daten… ⏳</div>
+      <div id="analyze-error" class="errors" hidden></div>
+      <div id="analyze-result" style="display:flex;flex-direction:column;gap:12px;margin-top:12px"></div>
+    </div>
+  </section>
+
+  <!-- ================= PROFIL ================= -->
+  <section id="tab-profile" class="tab-panel" hidden>
+    <div class="card">
+      <h2>👤 Mein Profil (Basis für AI-Generierung)</h2>
+      <p class="muted">Nur bestätigte Fakten eintragen — der Agent erfindet nie etwas und mahnt bei fehlenden Daten.</p>
+      <form id="profile-form" class="stack-form">
+        <div class="grid2">
+          <label>Name <input name="name" type="text"></label>
+          <label>Kontakt <input name="contact" type="text"></label>
+        </div>
+        <label>Headline <input name="headline" type="text"></label>
+        <label>Profil-Zusammenfassung <textarea name="summary" rows="3"></textarea></label>
+        <label>Ausbildung <textarea name="education" rows="5"></textarea></label>
+        <label>Praktische Erfahrung <textarea name="experience" rows="8"></textarea></label>
+        <label>Projekte <textarea name="projects" rows="8"></textarea></label>
+        <label>Sprachen <textarea name="languages" rows="2"></textarea></label>
+        <label>Kenntnisse <textarea name="skills" rows="4"></textarea></label>
+        <label>Verfügbarkeit <textarea name="availability" rows="2"></textarea></label>
+        <label>Zielrollen <textarea name="target_roles" rows="2"></textarea></label>
+        <label>Eigene CV-Regeln <textarea name="rules" rows="3"></textarea></label>
+        <button class="btn primary" type="submit">Profil speichern</button>
+        <span id="profile-saved" class="muted"></span>
+      </form>
+    </div>
+  </section>
+
+  <!-- ================= EINSTELLUNGEN ================= -->
+  <section id="tab-settings" class="tab-panel" hidden>
+    <div class="card">
+      <h2>⚙️ Einstellungen</h2>
+      <form id="settings-form" class="stack-form">
+        <h3>DeepSeek (AI)</h3>
+        <label>API-Key <input name="deepseek_api_key" type="password" placeholder="sk-…"></label>
+        <label>Modell
+          <select name="deepseek_model">
+            <option value="deepseek-chat">deepseek-chat</option>
+            <option value="deepseek-reasoner">deepseek-reasoner</option>
+          </select>
+        </label>
+        <button type="button" id="btn-test-key" class="btn">Teste API-Key</button>
+        <h3>Job-Quellen</h3>
+        <label>Adzuna App ID <input name="adzuna_app_id" type="text" placeholder="kostenlos: developer.adzuna.com"></label>
+        <label>Adzuna App Key <input name="adzuna_app_key" type="password"></label>
+        <label>BA Jobbörse API-Key <input name="ba_api_key" type="password" placeholder="über BA-Entwicklerportal"></label>
+        <h3>Defaults für Suche</h3>
+        <div class="grid2">
+          <label>Ort <input name="default_location" type="text"></label>
+          <label>Suchbegriff <input name="default_query" type="text"></label>
+        </div>
+        <button class="btn primary" type="submit">Speichern</button>
+      </form>
+    </div>
+  </section>
+</main>
+
+<!-- ================= MODAL ================= -->
+<div id="modal-overlay" hidden>
+  <div id="modal">
+    <div class="modal-head">
+      <div>
+        <h2 id="m-title"></h2>
+        <p id="m-company" class="muted"></p>
+      </div>
+      <button id="m-close" class="btn ghost">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="m-match" class="matchbox"></div>
+      <div class="m-actions">
+        <button class="btn primary" data-ai="match">🎯 Match berechnen</button>
+        <button class="btn" data-ai="anschreiben">✉️ Anschreiben</button>
+        <button class="btn" data-ai="lebenslauf">📄 Lebenslauf anpassen</button>
+        <button class="btn" data-ai="interview">🗣️ Interview-Fragen</button>
+      </div>
+      <div id="m-spinner" hidden>AI arbeitet… ⏳</div>
+      <div id="m-error" class="errors" hidden></div>
+
+      <div class="m-grid">
+        <div class="m-info">
+          <h3>Stelle</h3>
+          <dl id="m-detail"></dl>
+          <h3>Status</h3>
+          <select id="m-status"></select>
+          <h3>Notizen</h3>
+          <textarea id="m-notes" rows="4" placeholder="z.B. Ansprechpartner, nächster Schritt…"></textarea>
+          <button id="m-save-info" class="btn">Speichern</button>
+          <button id="m-delete" class="btn danger">Löschen</button>
+        </div>
+        <div class="m-drafts">
+          <h3>⏱️ Zeitverlauf</h3>
+          <div id="m-timeline"></div>
+          <h3>Generierte Dokumente</h3>
+          <div id="m-drafts"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast" hidden></div>
+<div id="js-status" style="position:fixed;top:0;right:0;background:var(--red);color:#fff;padding:4px 10px;font-size:11px;z-index:9999;border-radius:0 0 0 8px">⚠️ JS nicht geladen — bitte harten Refresh (Cmd+Shift+R) drücken</div>
+<script src="/static/app.js?v=light4"></script>
+</body>
+</html>
