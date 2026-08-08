@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / ".env")
-from ai_agent import DeepSeekAgent
+from ai_agent import ChatAgent
 from job_sources import search_adzuna, search_remoteok
 
 
@@ -58,10 +58,10 @@ def main():
     app_id = settings.get("adzuna_app_id", "").strip()
     app_key = settings.get("adzuna_app_key", "").strip()
     location = settings.get("default_location", "Berlin").strip()
-    agent = DeepSeekAgent(
-        settings.get("deepseek_api_key", ""),
-        settings.get("deepseek_model", "deepseek-chat"),
-        settings.get("deepseek_api_base", ""),
+    agent = ChatAgent(
+        settings.get("api_key", ""),
+        settings.get("llm_model", "deepseek-chat"),
+        settings.get("api_base", ""),
     )
     if not app_id or not app_key:
         print("Adzuna-Keys fehlen.")

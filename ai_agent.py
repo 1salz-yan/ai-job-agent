@@ -2,7 +2,7 @@
 """OpenAI-kompatibler Bewerbungs-Agent (JSON-Mode für Struktur, Plaintext für Langtexte).
 
 Standard-Endpunkt: DeepSeek. Jeder OpenAI-kompatible Chat-Endpunkt funktioniert
-(API-Base-URL konfigurierbar über Settings / Umgebungsvariable DEEPSEEK_API_BASE).
+(API-Base-URL konfigurierbar über Settings / Umgebungsvariable LLM_API_BASE).
 """
 import json, os, re, requests
 
@@ -24,13 +24,13 @@ class JobAgentError(Exception):
     pass
 
 
-class DeepSeekAgent:
+class ChatAgent:
     """OpenAI-kompatibler Chat-Client (Standard: DeepSeek, Base-URL konfigurierbar)."""
 
     def __init__(self, api_key, model="deepseek-chat", api_base=None):
         self.api_key = (api_key or "").strip()
         self.model = model or "deepseek-chat"
-        self.api_base = (api_base or os.getenv("DEEPSEEK_API_BASE", "") or DEFAULT_API_BASE).rstrip("/")
+        self.api_base = (api_base or os.getenv("LLM_API_BASE", "") or DEFAULT_API_BASE).rstrip("/")
         self._url = f"{self.api_base}/chat/completions"
 
     def _call(self, messages, temperature=0.6, max_tokens=4000, json_mode=True):

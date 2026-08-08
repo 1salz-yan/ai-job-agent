@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 import re
 import json
 
-from ai_agent import DeepSeekAgent, JobAgentError
+from ai_agent import ChatAgent, JobAgentError
 
 MAX_FETCH = 30  # max unread emails per check
 
@@ -62,7 +62,7 @@ def _date(msg) -> str:
 
 
 def check_mail(host, port, address, password, known_uids: set, jobs_ctx: list,
-               agent: DeepSeekAgent) -> list:
+               agent: ChatAgent) -> list:
     """Poll IMAP inbox for unseen emails, classify with AI.
 
     Args:
@@ -133,7 +133,7 @@ def check_mail(host, port, address, password, known_uids: set, jobs_ctx: list,
             pass
 
 
-def _classify(agent: DeepSeekAgent, email_text: str, jobs_ctx: list, company_name=None) -> dict:
+def _classify(agent: ChatAgent, email_text: str, jobs_ctx: list, company_name=None) -> dict:
     """Use DeepSeek to classify one email against the job board.
 
     Returns: {"job_id": int|None, "classification": str, "summary": str}

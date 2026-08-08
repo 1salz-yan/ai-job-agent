@@ -13,7 +13,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from flask import Flask, jsonify, request, send_from_directory
 
-from ai_agent import DeepSeekAgent, JobAgentError
+from ai_agent import ChatAgent, JobAgentError
 from job_sources import fetch_url_text, search_adzuna, search_ba
 BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = BASE_DIR / "job_agent.db"
@@ -132,6 +132,13 @@ def init_db():
     # Ensure columns added in later versions
     try: db.execute("ALTER TABLE emails ADD COLUMN company_name TEXT DEFAULT ''")
     except Exception: pass
+    # Migrate legacy settings keys (deepseek_* → generic names)
+    for old, new in [("deepseek_api_key", "api_key"), ("deepseek_model", "llm_model"),
+                     ("deepseek_api_base", "api_base")]:
+        db.execute(
+            "UPDATE settings SET key=? WHERE key=? AND NOT EXISTS (SELECT 1 FROM settings WHERE key=?)",
+            (new, old, new),
+        )
     _seed_profile(db)
     _seed_settings_from_env(db)
     _seed_jobs_from_folder(db)
@@ -171,8 +178,8 @@ def _seed_profile(db):
 
 def _seed_settings_from_env(db):
     for env_key, db_key in [
-        ("DEEPSEEK_API_KEY", "deepseek_api_key"),
-        ("DEEPSEEK_API_BASE", "deepseek_api_base"),
+        ("LLM_API_KEY", "api_key"),
+        ("LLM_API_BASE", "api_base"),
         ("ADZUNA_APP_ID", "adzuna_app_id"),
         ("ADZUNA_APP_KEY", "adzuna_app_key"),
         ("BA_API_KEY", "ba_api_key"),
@@ -185,13 +192,13 @@ def _seed_settings_from_env(db):
             db.execute(
                 "INSERT INTO settings (key, value) VALUES (?, ?)", (db_key, val)
             )
-    for key in ("deepseek_model", "deepseek_api_base", "default_location", "default_query",
+    for key in ("llm_model", "api_base", "default_location", "default_query",
                 "email_imap_host", "email_imap_port", "email_address",
                 "email_poll_interval", "exclude_keywords",
                 "prefer_companies", "prefer_keywords", "prefer_locations"):
         db.execute(
             "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)",
-            (key, {"deepseek_model": "deepseek-chat", "deepseek_api_base": "",
+            (key, {"llm_model": "deepseek-chat", "api_base": "",
                    "default_location": "Berlin",
                    "default_query": "Werkstudent Wirtschaftsingenieurwesen",
                    "email_imap_host": "imap.example.com", "email_imap_port": "993",
@@ -253,11 +260,11 @@ def _get_settings() -> dict:
     return {r["key"]: r["value"] for r in rows}
 
 
-def _agent(settings: dict) -> DeepSeekAgent:
-    return DeepSeekAgent(
-        settings.get("deepseek_api_key"),
-        settings.get("deepseek_model"),
-        settings.get("deepseek_api_base"),
+def _agent(settings: dict) -> ChatAgent:
+    return ChatAgent(
+        settings.get("api_key"),
+        settings.get("llm_model"),
+        settings.get("api_base"),
     )
 
 
@@ -370,7 +377,7 @@ def get_settings():
 @app.put("/api/settings")
 def put_settings():
     data = request.get_json(force=True, silent=True) or {}
-    allowed = {"deepseek_api_key", "deepseek_model", "deepseek_api_base",
+    allowed = {"api_key", "llm_model", "api_base",
                "adzuna_app_id", "adzuna_app_key",
                "ba_api_key", "default_location", "default_query",
                "email_imap_host", "email_imap_port", "email_address",
@@ -843,7 +850,7 @@ def ai_analyze():
         f"Score: {j.get('match_score','?')}% | Source: {j.get('source','?')}"
         for j in jobs
     )
-    profile_text = DeepSeekAgent._profile_text(profile)
+    profile_text = ChatAgent._profile_text(profile)
 
     result = agent._chat([{"role": "system", "content": (
         "Du bist ein Karriere-Strategie-Analyst. Analysiere das Bewerbungsprofil einer "

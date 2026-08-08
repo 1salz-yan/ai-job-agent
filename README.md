@@ -91,12 +91,12 @@ Go to **👤 Profil** and fill in your real, confirmed facts:
 2. Default provider: **DeepSeek** — create an account at
    https://platform.deepseek.com, add credit, create an API key.
 3. Other providers: any OpenAI-compatible endpoint works. Set the base URL via
-   `DEEPSEEK_API_BASE` in `.env` (e.g. `https://api.openai.com/v1`) or in
+   `LLM_API_BASE` in `.env` (e.g. `https://api.openai.com/v1`) or in
    ⚙️ Einstellungen.
 4. Add the key either in the **⚙️ Einstellungen** tab or in `.env` as
-   `DEEPSEEK_API_KEY=sk-...`.
+   `LLM_API_KEY=sk-...`.
 
-Model is configurable (`deepseek_model`, default `deepseek-chat`).
+Model is configurable (`llm_model`, default `deepseek-chat`).
 
 ### 3. Job search APIs (optional)
 
