@@ -161,7 +161,8 @@ these preferences. Top 10 results land in the Kanban **Merkliste**.
   (folder + filenames include a short role slug so multiple applications to the
   same company on the same day never overwrite each other; long company names
   are abbreviated, e.g. PricewaterhouseCoopers → PwC, to keep filenames
-  portal-safe).
+  portal-safe). Change the base folder in **⚙️ Einstellungen → Export**
+  (`export_dir`) or via the `EXPORT_DIR` environment variable.
 
 ---
 

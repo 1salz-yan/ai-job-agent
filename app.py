@@ -192,13 +192,14 @@ def _seed_settings_from_env(db):
             db.execute(
                 "INSERT INTO settings (key, value) VALUES (?, ?)", (db_key, val)
             )
-    for key in ("llm_model", "api_base", "default_location", "default_query",
+    for key in ("llm_model", "api_base", "export_dir", "default_location", "default_query",
                 "email_imap_host", "email_imap_port", "email_address",
                 "email_poll_interval", "exclude_keywords",
                 "prefer_companies", "prefer_keywords", "prefer_locations"):
         db.execute(
             "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)",
             (key, {"llm_model": "deepseek-chat", "api_base": "",
+                   "export_dir": "",
                    "default_location": "",
                    "default_query": "Praktikum Wirtschaftsingenieurwesen",
                    "email_imap_host": "imap.example.com", "email_imap_port": "993",
@@ -377,7 +378,7 @@ def get_settings():
 @app.put("/api/settings")
 def put_settings():
     data = request.get_json(force=True, silent=True) or {}
-    allowed = {"api_key", "llm_model", "api_base",
+    allowed = {"api_key", "llm_model", "api_base", "export_dir",
                "adzuna_app_id", "adzuna_app_key",
                "ba_api_key", "default_location", "default_query",
                "email_imap_host", "email_imap_port", "email_address",

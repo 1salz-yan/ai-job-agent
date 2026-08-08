@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Export als .docx — CV im 2-Spalten-Layout, Anschreiben klassisch."""
+import json, os, re, sqlite3
 from pathlib import Path
 from datetime import datetime
-import re
 from docx import Document
 from docx.shared import Pt, Cm, RGBColor, Inches
 from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -10,7 +10,24 @@ from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.oxml.ns import qn, nsdecls
 from docx.oxml import parse_xml
 
-BASE_DIR = Path.home() / "Desktop" / "Bewerbung" / "Bewerbung"
+DEFAULT_EXPORT_DIR = Path.home() / "Desktop" / "Bewerbung" / "Bewerbung"
+
+
+def _export_dir() -> Path:
+    """Export base dir — configurable via settings (export_dir), env EXPORT_DIR,
+    falls back to ~/Desktop/Bewerbung/Bewerbung."""
+    env = os.getenv("EXPORT_DIR", "").strip()
+    if env:
+        return Path(env).expanduser()
+    try:
+        import sqlite3
+        dbp = sqlite3.connect(Path(__file__).parent / "job_agent.db")
+        row = dbp.execute("SELECT value FROM settings WHERE key='export_dir'").fetchone()
+        if row and row[0] and str(row[0]).strip():
+            return Path(str(row[0]).strip()).expanduser()
+    except Exception:
+        pass
+    return DEFAULT_EXPORT_DIR
 FONT = "Calibri"
 
 
@@ -70,7 +87,7 @@ def _folder(job: dict) -> Path:
     loc = (job.get("location") or "").strip()
     city = loc.split(",")[-1].strip() if "," in loc else loc
     city = (city or "Ort").replace(" ", "_")
-    path = BASE_DIR / f"{now}_{company}_{city}{_role_slug(job)}"
+    path = _export_dir() / f"{now}_{company}_{city}{_role_slug(job)}"
     path.mkdir(parents=True, exist_ok=True)
     return path
 
