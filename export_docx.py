@@ -10,12 +10,12 @@ from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.oxml.ns import qn, nsdecls
 from docx.oxml import parse_xml
 
-DEFAULT_EXPORT_DIR = Path.home() / "Desktop" / "Bewerbung" / "Bewerbung"
+DEFAULT_EXPORT_DIR = Path.home() / "Desktop" / "Application"
 
 
 def _export_dir() -> Path:
     """Export base dir — configurable via settings (export_dir), env EXPORT_DIR,
-    falls back to ~/Desktop/Bewerbung/Bewerbung."""
+    falls back to ~/Desktop/Application."""
     env = os.getenv("EXPORT_DIR", "").strip()
     if env:
         return Path(env).expanduser()
