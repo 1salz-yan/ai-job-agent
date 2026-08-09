@@ -39,8 +39,22 @@ def _role_slug(job: dict) -> str:
                  "stellenanzeige", "job", "id", "ref",
                  "für", "im", "in", "der", "die", "das", "und", "von", "zum", "zur",
                  "als", "mit", "des", "den", "dem", "ein", "eine", "einer", "eines"}
-    words = [w.strip("()[]-–—:;.,") for w in title.split()]
-    keep = [w for w in words if w.lower() not in stopwords][:2]
+    # Split on any separator including / and \, strip punctuation & symbols
+    import re as _re
+    words = [w for w in _re.split(r"[\s/\\|]+", title) if w]
+    keep = []
+    for w in words:
+        w = w.strip("()[]-–—:;.,'\"/\\")
+        if len(w) >= 2 and w.lower() not in stopwords:  # skip single letters (m/w/d etc.)
+            keep.append(w)
+        if len(keep) == 2:
+            break
+    if not keep:  # fallback: first word ≥2 chars even if it's a stopword
+        for w in words:
+            w = w.strip("()[]-–—:;.,'\"/\\")
+            if len(w) >= 2:
+                keep.append(w)
+                break
     return "_" + "_".join(keep) if keep else ""
 
 
