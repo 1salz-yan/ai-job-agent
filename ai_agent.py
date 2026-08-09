@@ -24,6 +24,22 @@ class JobAgentError(Exception):
     pass
 
 
+def _detect_lang(text: str) -> str:
+    """Detect whether a job description is English or German (default: de)."""
+    t = (text or "")[:4000].lower()
+    if not t:
+        return "de"
+    de_markers = ["stelle", "bewerbung", "praktikum", "wir bieten", "aufgaben",
+                  "anforderungen", "wir suchen", "ihr profil", "einsatzort",
+                  "vergütung", "ab sofort", "team", "unternehmen"]
+    en_markers = ["job", "responsibilities", "requirements", "we offer", "you will",
+                  "about us", "what you'll", "qualifications", "internship",
+                  "the role", "your profile", "apply now", "full-time", "part-time"]
+    de_hits = sum(1 for m in de_markers if m in t)
+    en_hits = sum(1 for m in en_markers if m in t)
+    return "en" if en_hits > de_hits else "de"
+
+
 class ChatAgent:
     """OpenAI-kompatibler Chat-Client (Standard: DeepSeek, Base-URL konfigurierbar)."""
 
@@ -95,19 +111,27 @@ class ChatAgent:
         # Use user's own wording as base if available
         base = (profile.get("cv_base") or "").strip()
         base_note = f"=== KANDIDATIN EIGENE FORMULIERUNG (BLUEPRINT) ===\n{base}\n\n" if base else ""
+        lang = _detect_lang(job.get("description", ""))
+        lang_rule = (
+            "Die Stellenanzeige ist auf ENGLISCH → schreibe das Anschreiben vollständig auf "
+            "Englisch (Betreff 'Application: [Role]', Anrede 'Dear Hiring Manager', Gruß 'Best regards').\n"
+            if lang == "en" else
+            "Die Stellenanzeige ist auf Deutsch → schreibe das Anschreiben auf Deutsch.\n"
+        )
         raw = self._chat_text([{"role": "system", "content": (
-            "Du schreibst ein Anschreiben für eine deutsche Wirtschaftsingenieurin. "
+            "Du schreibst ein Anschreiben für eine Wirtschaftsingenieurin. "
             "WICHTIG: Übernimm ihre eigene Formulierung und ihren Ton aus dem Blueprint, "
             "erfinde KEINE neuen Fakten und übertreibe NICHT.\n\n"
             "STIL-REGELN (aus User-Feedback):\n"
             "- Kompakt und direkt, wie die Kandidatin selbst schreibt. KEIN Zahlen-Overload.\n"
             "- KEINE marktüblichen Floskeln ('mit großem Interesse', 'hiermit bewerbe ich mich').\n"
             "- Formeller Geschäftsbrief-Stil, 1500–2000 Zeichen, 3–4 Absätze.\n"
-            "- Betreff: sachlich, 'Bewerbung: [Rolle] (Kennziffer: [ID])'.\n"
+            "- Betreff: sachlich, 'Bewerbung: [Rolle] (Kennziffer: [ID])' (auf Englisch: 'Application: [Rolle]').\n"
             "- ALLE Fakten aus dem Profil. NIE erfinden.\n"
             + HONESTY_RULES
         )}, {"role": "user", "content": (
             "Schreibe ein Anschreiben für diese Stelle. Orientiere dich an ihrem Stil.\n"
+            + lang_rule +
             "Aufbau: Betreff → Anrede → Hook (Warum DIESE Firma? 1 Satz) → "
             "2 Absätze Beweise (stärkste passende Erfahrungen, kompakt) → "
             "Abschluss (Verfügbarkeit 10/2026–03/2027, 5 Monate) → Gruß + Name\n\n"
@@ -126,6 +150,13 @@ class ChatAgent:
     def lebenslauf(self, profile: dict, job: dict) -> dict:
         base = (profile.get("cv_base") or "").strip()
         base_note = f"=== KANDIDATIN EIGENE FORMULIERUNG (BLUEPRINT) ===\n{base}\n\n" if base else ""
+        lang = _detect_lang(job.get("description", ""))
+        lang_rule = (
+            "Die Stellenanzeige ist auf ENGLISCH → schreibe den gesamten Lebenslauf auf Englisch "
+            "(Sektionsnamen: Experience, Education, Projects, Skills & Languages).\n"
+            if lang == "en" else
+            "Die Stellenanzeige ist auf Deutsch → schreibe den Lebenslauf auf Deutsch.\n"
+        )
         text = self._chat_text([{"role": "system", "content": (
             "Du passt einen Lebenslauf an eine Stellenanzeige an. "
             "WICHTIG: Folge der Struktur und dem Ton der Kandidatin aus dem Blueprint. "
@@ -145,6 +176,7 @@ class ChatAgent:
             "Erstelle einen an die Stelle angepassten Lebenslauf.\n"
             "Übernimm die Formulierungen der Kandidatin aus dem Blueprint, passe nur an, "
             "was nötig ist (Profil-Satz, PROJEKT-AUSWAHL nach JD).\n"
+            + lang_rule +
             "WICHTIG: Lies die Stellenbeschreibung unten genau, extrahiere die wichtigsten "
             "Themen und wähle die passenden Projekte aus dem Pool. Nicht immer dieselben!\n\n"
             + base_note +

@@ -173,19 +173,21 @@ def export_lebenslauf(job: dict, content: str) -> Path:
         # Clean markdown
         s = s.replace("**", "").replace("## ", "").replace("# ", "")
         upper = s.upper().strip()
-        if upper in ("PROFIL", "PROFIL & ZIELE"):
+        if upper in ("PROFIL", "PROFIL & ZIELE", "SUMMARY", "PROFILE"):
             if current: sections[current] = buf
             current = "profil"; buf = []; continue
-        if upper in ("AUSBILDUNG", "AUSBILDUNG & STUDIUM"):
+        if upper in ("AUSBILDUNG", "AUSBILDUNG & STUDIUM", "EDUCATION", "EDUCATION & TRAINING"):
             if current: sections[current] = buf
             current = "ausbildung"; buf = []; continue
-        if upper in ("PRAKTISCHE ERFAHRUNG", "BERUFSERFAHRUNG", "PRAXISERFAHRUNG", "ERFAHRUNG"):
+        if upper in ("PRAKTISCHE ERFAHRUNG", "BERUFSERFAHRUNG", "PRAXISERFAHRUNG", "ERFAHRUNG",
+                     "EXPERIENCE", "WORK EXPERIENCE", "PROFESSIONAL EXPERIENCE", "EXPERIENCE & TRAINING"):
             if current: sections[current] = buf
             current = "erfahrung"; buf = []; continue
         if upper in ("PROJEKTE", "PROJECTS"):
             if current: sections[current] = buf
             current = "projekte"; buf = []; continue
-        if upper in ("SPRACHEN & KENNTNISSE", "SPRACHEN UND KENNTNISSE", "SPRACHEN & TOOLS", "KENNTNISSE"):
+        if upper in ("SPRACHEN & KENNTNISSE", "SPRACHEN UND KENNTNISSE", "SPRACHEN & TOOLS", "KENNTNISSE",
+                     "SKILLS", "SKILLS & LANGUAGES", "LANGUAGES & SKILLS", "LANGUAGES", "LANGUAGES & TOOLS"):
             if current: sections[current] = buf
             current = "sprachen"; buf = []; continue
         if current:
