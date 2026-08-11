@@ -83,7 +83,14 @@ def main():
         print(f"   ⚠️ RemoteOK: {e}", file=sys.stderr)
 
     # 2. Dedup + filter out Werkstudent + exclude keywords
-    existing_urls = {r[0] for r in db.execute("SELECT url FROM jobs WHERE url != ''").fetchall()}
+    # Active/wishlisted postings are never re-recommended; rejected/withdrawn
+    # ones ARE (user may want to re-apply).
+    active = ("wishlist", "applied", "confirmed", "interview_1", "interview_2",
+              "interview_3", "assessment", "offer")
+    placeholders = ",".join("?" * len(active))
+    existing_urls = {r[0] for r in db.execute(
+        f"SELECT url FROM jobs WHERE url != '' AND status IN ({placeholders})", active
+    ).fetchall()}
     exclude_raw = settings.get("exclude_keywords", "") or ""
     exclude = [w.strip().lower() for w in exclude_raw.replace(",", " ").split() if w.strip()]
     new = []
@@ -162,19 +169,30 @@ def main():
             print(f"   💬 {j['summary'][:150]}")
         print(f"   🔗 {j['url']}\n")
 
-    # 5. Save to DB
+    # 5. Save to DB — upsert by URL: reactivate rejected/withdrawn instead of duplicating
     for j in top:
         try:
-            db.execute(
-                "INSERT OR IGNORE INTO jobs (company, title, location, url, source, "
-                "description, salary, status, match_score, match_reasons, job_type, created_at, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, 'wishlist', ?, ?, ?, datetime('now'), datetime('now'))",
-                (j["company"], j["title"], j.get("location", ""), j["url"], "adzuna",
-                 j.get("description", ""), j.get("salary", ""), j["score"],
-                 json.dumps({"score": j["score"], "summary": j.get("summary", "")},
-                           ensure_ascii=False),
-                 _job_type_from_title(j["title"])),
-            )
+            existing = db.execute("SELECT id FROM jobs WHERE url = ?", (j["url"],)).fetchone()
+            if existing:
+                db.execute(
+                    "UPDATE jobs SET status='wishlist', match_score=?, match_reasons=?, updated_at=datetime('now') "
+                    "WHERE id=?",
+                    (j["score"],
+                     json.dumps({"score": j["score"], "summary": j.get("summary", "")},
+                                ensure_ascii=False),
+                     existing[0]),
+                )
+            else:
+                db.execute(
+                    "INSERT INTO jobs (company, title, location, url, source, "
+                    "description, salary, status, match_score, match_reasons, job_type, created_at, updated_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, 'wishlist', ?, ?, ?, datetime('now'), datetime('now'))",
+                    (j["company"], j["title"], j.get("location", ""), j["url"], "adzuna",
+                     j.get("description", ""), j.get("salary", ""), j["score"],
+                     json.dumps({"score": j["score"], "summary": j.get("summary", "")},
+                               ensure_ascii=False),
+                     _job_type_from_title(j["title"])),
+                )
         except Exception:
             pass
     db.commit()
