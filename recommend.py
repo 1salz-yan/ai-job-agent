@@ -27,8 +27,9 @@ def _job_type_from_title(title: str) -> str:
     return ""
 
 DB_PATH = BASE_DIR / "job_agent.db"
+# === ANPASSEN: Suchbegriffe für deinen Berufsbereich ===
+# Jeder Lauf wählt zufällig eine Teilmenge daraus → abwechslungsreiche Ergebnisse
 QUERIES = [
-    # === ANPASSEN: Suchbegriffe für deinen Berufsbereich ===
     # Profession-related (technical Wirtschaftsingenieurwesen roles)
     "Praktikum Projektmanagement",
     "Junior Projektmanager",
@@ -36,12 +37,23 @@ QUERIES = [
     "Praktikum Prozessoptimierung",
     "Praktikum Supply Chain",
     "Junior Produktmanager",
+    "Praktikum Wirtschaftsingenieur",
+    "Werkstudent Wirtschaftsingenieur",
+    "Junior Process Engineer",
+    "Praktikum Operations",
+    "Junior Business Development",
+    "Praktikum Produktdaten",
+    "Junior Supply Chain",
+    "Praktikum Projektsteuerung",
+    "Trainee Prozessmanagement",
     # Interest-based
     "Blockchain Junior",
     "Web3 Praktikum",
     "IoT Praktikum",
     "Fintech Junior",
+    "Digitalisierung Praktikum",
 ]
+SEARCH_WORDS_PER_RUN = 9  # random subset of QUERIES per run
 
 
 def _row2dict(row):
@@ -68,10 +80,12 @@ def main():
         sys.exit(1)
 
     # 1. Search Adzuna (Berlin + Deutschland) + RemoteOK
+    import random
     all_results = []
+    queries = random.sample(QUERIES, min(SEARCH_WORDS_PER_RUN, len(QUERIES)))
     for loc, loc_label in [(location, location or "Default"), ("", "Deutschland")]:
         print(f"🔍 Adzuna ({loc_label}) …", file=sys.stderr)
-        for q in QUERIES:
+        for q in queries:
             try:
                 all_results.extend(search_adzuna(app_id, app_key, q, loc))
             except Exception as e:
@@ -141,7 +155,6 @@ def main():
             return 0 if any(p in loc for p in pref_locs) else 1
         return 0  # no preference → score decides
 
-    scored.sort(key=lambda x: (_loc_rank(x), -x["score"]))
     for j in scored:
         boost = 0
         hay = (j.get("title", "") + " " + (j.get("description") or "")[:800]).lower()
@@ -153,8 +166,25 @@ def main():
         if any(l in str(j.get("location", "")).lower() for l in pref_locs):
             boost += 4
         j["score"] = min(j["score"] + boost, 100)
-    scored.sort(key=lambda x: (_loc_rank(x), -x["score"]))
-    top = scored[:10]
+
+    # 3c. Pick top 10 — stratified sampling: ~6 high (≥70) + ~4 mid (50–69),
+    #     random within each band → quality floor with real variety per run.
+    import random as _random
+    good = [j for j in scored if j.get("score", 0) >= 50]
+    if len(good) <= 10:
+        top = sorted(good, key=lambda x: (_loc_rank(x), -x["score"]))[:10]
+    else:
+        high = [j for j in good if j.get("score", 0) >= 70]
+        mid = [j for j in good if j.get("score", 0) < 70]
+        top = []
+        if high:
+            top += _random.sample(high, min(6, len(high)))
+        if mid:
+            top += _random.sample(mid, min(4, len(mid)))
+        if len(top) < 10:  # top up from remaining
+            rest = [j for j in good if j not in top]
+            top += _random.sample(rest, min(10 - len(top), len(rest)))
+        top.sort(key=lambda x: (_loc_rank(x), -x.get("score", 0)))
 
     # 4. Print
     print(f"\n📬 Job-Empfehlungen ({len(new)} neu / {len(all_results)} gescannt)\n")
