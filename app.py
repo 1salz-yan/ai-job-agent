@@ -477,6 +477,17 @@ def delete_job(job_id):
     return jsonify(ok=True)
 
 
+@app.delete("/api/jobs/clear")
+def clear_jobs():
+    """Batch delete all jobs in a given status (e.g. wishlist → Merkliste leeren)."""
+    status = request.args.get("status", "").strip()
+    if status not in STATUSES:
+        return jsonify(error="Ungültiger Status"), 400
+    with get_db() as db:
+        cur = db.execute("DELETE FROM jobs WHERE status = ?", (status,))
+        return jsonify(ok=True, deleted=cur.rowcount)
+
+
 # ---- Drafts
 @app.get("/api/jobs/<int:job_id>/drafts")
 def list_drafts(job_id):

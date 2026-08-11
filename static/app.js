@@ -163,7 +163,12 @@ function renderKanban() {
     return `<div class="kanban-row">${cols.map((s) => `
       <div class="column" data-status="${s.id}" style="--col:${s.color}">
         <div class="col-head">
-          <span>${s.label}</span><span class="count">${counts[s.id] || 0}</span>
+          <span>${s.label}</span>
+          <span style="display:flex;align-items:center;gap:6px">
+            ${s.id === "wishlist" && (counts[s.id] || 0) > 0
+              ? `<button class="col-clear" data-clear-status="wishlist" title="Merkliste leeren">🗑️</button>` : ""}
+            <span class="count">${counts[s.id] || 0}</span>
+          </span>
         </div>
         <div class="col-body">
           ${filtered.filter((j) => j.status === s.id).map(jobCard).join("") || '<div class="muted col-empty">—</div>'}
@@ -171,6 +176,20 @@ function renderKanban() {
       </div>`).join("")}</div>`;
   }
   board.innerHTML = renderRow(1) + renderRow(2);
+
+  // Clear Merkliste (one click)
+  board.querySelectorAll("[data-clear-status]").forEach((btn) => {
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      if (!confirm("Merkliste wirklich komplett leeren? Alle Karten in dieser Liste werden gelöscht.")) return;
+      try {
+        const res = await api("/api/jobs/clear?status=wishlist", { method: "DELETE" });
+        toast(`🗑️ ${res.deleted} Einträge gelöscht`);
+        refreshJobs();
+        renderKanban();
+      } catch (err) { toast(err.message, true); }
+    });
+  });
 
   // Click on column header → open status list view
   board.querySelectorAll(".col-head").forEach((head) => {
