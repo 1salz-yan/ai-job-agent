@@ -157,7 +157,29 @@ def search_remoteok(tags: list = None) -> list:
                     continue
                 seen.add(cid)
                 loc = str(j.get("location", "") or "")
-                tgs = j.get("tags", []) or []
+                tgs = [str(t).lower() for t in (j.get("tags", []) or [])]
+                # RemoteOK's tag system is unreliable (bulk-tagged) → keep jobs whose
+                # TITLE or TAGS mention web3/crypto, but drop obviously unrelated roles
+                title = str(j.get("position", "") or "").lower()
+                web3_words = ["blockchain", "crypto", "web3", "web 3", "defi", "ethereum",
+                              "solidity", "smart contract", "nft", "bitcoin", "solana",
+                              "staking", "wallet", "token", "depin", "validator",
+                              "on-chain", "onchain", "cryptocurrency", "digital asset"]
+                tech_role = ["engineer", "developer", "analyst", "trader", "architect",
+                             "consultant", "lead", "director", "scientist", "manager",
+                             "dev", "head", "product"]
+                non_tech = ["customer", "support", "marketing", "hr ", "human resource",
+                            "designer", "admin", "assistant", "graphic", "social media",
+                            "help desk", "sales", "coach", "procurement", "recruit",
+                            "biolog", "environmental", "clinical", "specialist",
+                            "language", "english", "german", "content", "writer"]
+                title_hit = any(w in title for w in web3_words)
+                tag_hit = any(any(w in t for w in web3_words) for t in tgs) \
+                    and any(w in title for w in tech_role)
+                if not (title_hit or tag_hit):
+                    continue
+                if any(w in title for w in non_tech):
+                    continue
                 if not any(w in loc.lower() for w in
                           ["germany", "berlin", "deutschland", "europe", "remote", "eu"]):
                     continue

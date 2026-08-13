@@ -46,14 +46,20 @@ QUERIES = [
     "Junior Supply Chain",
     "Praktikum Projektsteuerung",
     "Trainee Prozessmanagement",
-    # Interest-based
-    "Blockchain Junior",
+]
+# Web3/blockchain/crypto — at least 2 of these are ALWAYS searched per run
+WEB3_QUERIES = [
     "Web3 Praktikum",
+    "Web3 Junior",
+    "Blockchain Junior",
+    "DePIN Praktikum",
+    "Crypto Operations",
+    "Solidity Junior",
     "IoT Praktikum",
     "Fintech Junior",
     "Digitalisierung Praktikum",
 ]
-SEARCH_WORDS_PER_RUN = 9  # random subset of QUERIES per run
+SEARCH_WORDS_PER_RUN = 9  # = 2 web3 + 7 other (random subsets)
 
 
 def _row2dict(row):
@@ -82,7 +88,10 @@ def main():
     # 1. Search Adzuna (Berlin + Deutschland) + RemoteOK
     import random
     all_results = []
-    queries = random.sample(QUERIES, min(SEARCH_WORDS_PER_RUN, len(QUERIES)))
+    # Always include ≥2 web3 queries, then random others → variety + web3 presence
+    n_web3 = min(2, len(WEB3_QUERIES))
+    n_other = max(0, SEARCH_WORDS_PER_RUN - n_web3)
+    queries = random.sample(WEB3_QUERIES, n_web3) + random.sample(QUERIES, min(n_other, len(QUERIES)))
     for loc, loc_label in [(location, location or "Default"), ("", "Deutschland")]:
         print(f"🔍 Adzuna ({loc_label}) …", file=sys.stderr)
         for q in queries:

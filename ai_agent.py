@@ -95,11 +95,25 @@ class ChatAgent:
         return f"Unternehmen: {job.get('company','')}\nTitel: {job.get('title','')}\nOrt: {job.get('location','')}\nGehalt: {job.get('salary','') or 'n/a'}\nDeadline: {job.get('deadline','') or 'n/a'}\nURL: {job.get('url','')}\n\nStellenbeschreibung:\n{desc}"
 
     def match(self, profile: dict, job: dict) -> dict:
+        hay = ((job.get("title") or "") + " " + (job.get("description") or "")).lower()
+        is_web3 = any(k in hay for k in [
+            "web3", "blockchain", "crypto", "defi", "depin", "de pin", "solidity",
+            "smart contract", "ethereum", "solana", "validator", "staking", "nft",
+            "token", "wallet", "on-chain", "onchain",
+        ])
+        web3_rule = (
+            "WEB3/CRYPTO-STELLE erkannt: Bewerte die Kandidatin gegen die relevanten "
+            "Profil-Projekte (z.B. Blockchain/DePIN/Smart-Contract/Staking-Erfahrung im Profil). "
+            "Diese Projekte zählen bei Web3-Stellen WIE direkte Berufserfahrung — nicht als fehlend werten.\n"
+            "Remotestellen sind zugänglich — kein Nachteil.\n"
+            if is_web3 else ""
+        )
         return self._chat([{"role": "system", "content": SYSTEM_PERSONA}, {"role": "user", "content": (
             "Bewerte die Eignung der Kandidatin ehrlich.\n\n"
             "=== PROFIL ===\n" + self._profile_text(profile) + "\n\n"
             "=== STELLE ===\n" + self._job_text(job) + "\n\n"
             "SCORING-REGELN:\n"
+            + web3_rule +
             "- Berufsanfängerin (<1 Jahr Erfahrung). ≥2J gefordert → max 40%. ≥3J → max 25%.\n"
             "- 'Junior' im Titel heißt NICHT automatisch niedrige Anforderungen — JD prüfen.\n"
             "- Nur 10/2026–03/2027 verfügbar (5 Monate). Unbefristet → -15 Punkte.\n"
