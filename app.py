@@ -525,12 +525,20 @@ def export_docx(job_id, kind):
     if kind not in ("anschreiben", "lebenslauf"):
         return jsonify(error="Ungültiger Typ"), 400
     job = _job_row(job_id)
-    # Find latest draft of this kind
+    # Find latest draft of this kind, or the exact draft the user clicked
+    data = request.get_json(force=True, silent=True) or {}
+    draft_id = data.get("draft_id")
     with get_db() as db:
-        row = db.execute(
-            "SELECT content FROM drafts WHERE job_id=? AND kind=? ORDER BY id DESC LIMIT 1",
-            (job_id, kind),
-        ).fetchone()
+        if draft_id:
+            row = db.execute(
+                "SELECT content FROM drafts WHERE id=? AND job_id=? AND kind=?",
+                (draft_id, job_id, kind),
+            ).fetchone()
+        else:
+            row = db.execute(
+                "SELECT content FROM drafts WHERE job_id=? AND kind=? ORDER BY id DESC LIMIT 1",
+                (job_id, kind),
+            ).fetchone()
     if not row:
         return jsonify(error=f"Kein {kind} generiert. Bitte zuerst generieren."), 400
     from export_docx import export_anschreiben, export_lebenslauf

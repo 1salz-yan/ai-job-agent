@@ -420,7 +420,7 @@ async function loadDrafts(jobId) {
       <div class="draft-head">
         <span class="kind">${KIND_LABEL[d.kind] || d.kind}<span class="kind-tag kind-${d.kind}">${esc(d.kind)}</span></span>
         <span>${esc(d.created_at)} <button class="btn ghost" data-copy="${d.id}">📋 Kopieren</button>
-        <button class="btn ghost" data-export="${currentJob.id}" data-export-kind="${d.kind}">📥 .docx</button></span>
+        <button class="btn ghost" data-export="${currentJob.id}" data-export-kind="${d.kind}" data-export-draft="${d.id}">📥 .docx</button></span>
       </div>
       <div class="draft-body" id="draft-${d.id}">${esc(d.content)}</div>
     </div>`).join("");
@@ -485,7 +485,7 @@ document.addEventListener("click", async (e) => {
   if (exportBtn) {
     exportBtn.disabled = true;
     try {
-      const res = await api(`/api/jobs/${exportBtn.dataset.export}/export/${exportBtn.dataset.exportKind}`, { method: "POST" });
+      const res = await api(`/api/jobs/${exportBtn.dataset.export}/export/${exportBtn.dataset.exportKind}`, { method: "POST", body: { draft_id: exportBtn.dataset.exportDraft ? Number(exportBtn.dataset.exportDraft) : undefined } });
       toast(`Gespeichert: ${res.path}`);
       if (res.path) {
         // Offer to reveal in Finder
