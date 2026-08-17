@@ -105,6 +105,9 @@ class ChatAgent:
             "WEB3/CRYPTO-STELLE erkannt: Bewerte die Kandidatin gegen die relevanten "
             "Profil-Projekte (z.B. Blockchain/DePIN/Smart-Contract/Staking-Erfahrung im Profil). "
             "Diese Projekte zählen bei Web3-Stellen WIE direkte Berufserfahrung — nicht als fehlend werten.\n"
+            "ABER: Auch bei Web3-Stellen gilt die Erfahrungsregel — Senior/Lead/Staff/Principal-Stellen "
+            "und Stellen mit ≥2 Jahren geforderter Erfahrung werden stark abgewertet. Die Kandidatin "
+            "sucht Praktikum/Junior/Entry-Level (10/2026–03/2027, 5 Monate).\n"
             "Remotestellen sind zugänglich — kein Nachteil.\n"
             if is_web3 else ""
         )

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Daily recommender: search Adzuna, AI-score, deduplicate, save top matches."""
-import json, sys, sqlite3
+import json, re, sys, sqlite3
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -62,6 +62,33 @@ WEB3_QUERIES = [
 SEARCH_WORDS_PER_RUN = 9  # = 2 web3 + 7 other (random subsets)
 
 
+def _url_key(url: str) -> str:
+    """Stable dedup key for a job URL.
+
+    Adzuna appends per-request tracking params (se=, v=, utm_*) that CHANGE on
+    every search — the same ad then compares unequal as a plain string, so
+    applied/confirmed jobs with the same ad id slip past the URL dedup and get
+    re-recommended. Key = ad id for Adzuna, full path (no query) otherwise.
+    """
+    if not url:
+        return ""
+    path = url.split("?")[0].rstrip("/")
+    m = re.search(r"/(?:details|land/ad)/(\d+)$", path)
+    if m:
+        return f"adzuna:{m.group(1)}"
+    return path
+
+
+def _norm_title(title: str) -> str:
+    """Normalized title for fuzzy dedup: lowercase, drop parentheticals like
+    (m/w/d), strip punctuation/whitespace. Two postings of the same role from
+    the same company (Adzuna re-lists with a NEW ad id) then collide."""
+    t = (title or "").lower()
+    t = re.sub(r"\([^)]*\)", " ", t)
+    t = re.sub(r"[^a-z0-9äöüß ]", " ", t)
+    return re.sub(r"\s+", " ", t).strip()
+
+
 def _row2dict(row):
     return dict(zip([c[0] for c in row.description], row))
 
@@ -88,10 +115,14 @@ def main():
     # 1. Search Adzuna (Berlin + Deutschland) + RemoteOK
     import random
     all_results = []
+    # Search terms come from settings (user-configurable); fall back to built-in defaults
+    def _split(s): return [x.strip() for x in (s or "").split(";") if x.strip()]
+    queries_all = _split(settings.get("search_queries", "")) or QUERIES
+    web3_all = _split(settings.get("web3_queries", "")) or WEB3_QUERIES
     # Always include ≥2 web3 queries, then random others → variety + web3 presence
-    n_web3 = min(2, len(WEB3_QUERIES))
+    n_web3 = min(2, len(web3_all))
     n_other = max(0, SEARCH_WORDS_PER_RUN - n_web3)
-    queries = random.sample(WEB3_QUERIES, n_web3) + random.sample(QUERIES, min(n_other, len(QUERIES)))
+    queries = random.sample(web3_all, n_web3) + random.sample(queries_all, min(n_other, len(queries_all)))
     for loc, loc_label in [(location, location or "Default"), ("", "Deutschland")]:
         print(f"🔍 Adzuna ({loc_label}) …", file=sys.stderr)
         for q in queries:
@@ -111,8 +142,14 @@ def main():
     active = ("wishlist", "applied", "confirmed", "interview_1", "interview_2",
               "interview_3", "assessment", "offer")
     placeholders = ",".join("?" * len(active))
-    existing_urls = {r[0] for r in db.execute(
+    # Dedup by NORMALIZED URL key (Adzuna tracking params change per request,
+    # so plain URL equality misses re-listings of applied/confirmed jobs).
+    existing_urls = {_url_key(r[0]) for r in db.execute(
         f"SELECT url FROM jobs WHERE url != '' AND status IN ({placeholders})", active
+    ).fetchall()}
+    # Same-company same-normalized-title = the same role re-listed with a new ad id.
+    existing_titles = {(r[0].strip().lower(), _norm_title(r[1])) for r in db.execute(
+        f"SELECT company, title FROM jobs WHERE status IN ({placeholders})", active
     ).fetchall()}
     exclude_raw = settings.get("exclude_keywords", "") or ""
     exclude = [w.strip().lower() for w in exclude_raw.replace(",", " ").split() if w.strip()]
@@ -121,7 +158,10 @@ def main():
         title = (x.get("title") or "").lower()
         if "werkstudent" in title or "werkstudium" in title:
             continue
-        if x["url"] in existing_urls:
+        # Dedup: normalized URL key OR same company+normalized title as an active job.
+        if _url_key(x.get("url", "")) in existing_urls:
+            continue
+        if (str(x.get("company", "")).strip().lower(), _norm_title(x.get("title", ""))) in existing_titles:
             continue
         # Exclude keywords (user preferences, e.g. HR)
         if exclude:
@@ -195,6 +235,30 @@ def main():
             top += _random.sample(rest, min(10 - len(top), len(rest)))
         top.sort(key=lambda x: (_loc_rank(x), -x.get("score", 0)))
 
+    # 3d. Diversity guard: max 2 postings per company (bulk ads from one firm
+    #     used to flood the list, e.g. 8x "KI-Berater" from the same GmbH).
+    from collections import Counter as _Counter
+    seen_key, by_company = set(), _Counter()
+    # Companies already present in the active board count toward the 2-limit —
+    # otherwise the same firms (Syntex, Basf…) would keep re-appearing every run.
+    existing_company_counts = _Counter(
+        r[0].strip().lower() for r in db.execute(
+            f"SELECT company FROM jobs WHERE status IN ({placeholders})", active
+        ).fetchall() if r[0]
+    )
+    top_diverse = []
+    for j in top:
+        k = _url_key(j.get("url", ""))
+        if k in seen_key:
+            continue
+        seen_key.add(k)
+        comp_key = str(j.get("company", "")).strip().lower()
+        if by_company[comp_key] + existing_company_counts[comp_key] >= 2:
+            continue
+        by_company[comp_key] += 1
+        top_diverse.append(j)
+    top = top_diverse
+
     # 4. Print
     print(f"\n📬 Job-Empfehlungen ({len(new)} neu / {len(all_results)} gescannt)\n")
     for i, j in enumerate(top, 1):
@@ -208,18 +272,23 @@ def main():
             print(f"   💬 {j['summary'][:150]}")
         print(f"   🔗 {j['url']}\n")
 
-    # 5. Save to DB — upsert by URL: reactivate rejected/withdrawn instead of duplicating
+    # 5. Save to DB — upsert by NORMALIZED url key (tracking params change per
+    #    request, so raw URL equality would INSERT duplicates of the same ad);
+    #    reactivate rejected/withdrawn instead of duplicating.
+    url_key_to_id = {_url_key(r[0]): r[1] for r in db.execute(
+        "SELECT url, id FROM jobs WHERE url != ''"
+    ).fetchall()}
     for j in top:
         try:
-            existing = db.execute("SELECT id FROM jobs WHERE url = ?", (j["url"],)).fetchone()
-            if existing:
+            existing_id = url_key_to_id.get(_url_key(j.get("url", "")))
+            if existing_id:
                 db.execute(
                     "UPDATE jobs SET status='wishlist', match_score=?, match_reasons=?, updated_at=datetime('now') "
                     "WHERE id=?",
                     (j["score"],
                      json.dumps({"score": j["score"], "summary": j.get("summary", "")},
                                 ensure_ascii=False),
-                     existing[0]),
+                     existing_id),
                 )
             else:
                 db.execute(

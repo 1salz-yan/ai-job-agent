@@ -173,12 +173,19 @@ def search_remoteok(tags: list = None) -> list:
                             "help desk", "sales", "coach", "procurement", "recruit",
                             "biolog", "environmental", "clinical", "specialist",
                             "language", "english", "german", "content", "writer"]
+                senior = ["senior", "staff ", "principal", "lead ", "head of", "vp ", "director of",
+                          "architect", "manager of", "5+ years", "5 years", "3+ years", "3 years",
+                          "experienced"]
                 title_hit = any(w in title for w in web3_words)
                 tag_hit = any(any(w in t for w in web3_words) for t in tgs) \
                     and any(w in title for w in tech_role)
                 if not (title_hit or tag_hit):
                     continue
                 if any(w in title for w in non_tech):
+                    continue
+                # Drop senior/senior-level postings — the candidate targets
+                # Praktikum/Junior/Entry-Level only
+                if any(w in title for w in senior):
                     continue
                 if not any(w in loc.lower() for w in
                           ["germany", "berlin", "deutschland", "europe", "remote", "eu"]):

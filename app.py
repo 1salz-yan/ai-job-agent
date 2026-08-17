@@ -195,7 +195,8 @@ def _seed_settings_from_env(db):
     for key in ("llm_model", "api_base", "export_dir", "default_location", "default_query",
                 "email_imap_host", "email_imap_port", "email_address",
                 "email_poll_interval", "exclude_keywords",
-                "prefer_companies", "prefer_keywords", "prefer_locations"):
+                "prefer_companies", "prefer_keywords", "prefer_locations",
+                "search_queries", "web3_queries"):
         db.execute(
             "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)",
             (key, {"llm_model": "deepseek-chat", "api_base": "",
@@ -205,7 +206,9 @@ def _seed_settings_from_env(db):
                    "email_imap_host": "imap.example.com", "email_imap_port": "993",
                    "email_address": "", "email_poll_interval": "15",
                    "exclude_keywords": "HR, Personalwesen, Sachbearbeitung, Personal, Admin",
-                   "prefer_companies": "", "prefer_keywords": "", "prefer_locations": ""}[key]),
+                   "prefer_companies": "", "prefer_keywords": "", "prefer_locations": "",
+                   "search_queries": "Praktikum Projektmanagement; Junior Projektmanager; Trainee Wirtschaftsingenieur; Praktikum Prozessoptimierung; Praktikum Supply Chain; Junior Produktmanager; Praktikum Wirtschaftsingenieur; Werkstudent Wirtschaftsingenieur; Junior Process Engineer; Praktikum Operations; Junior Business Development; Praktikum Produktdaten; Junior Supply Chain; Praktikum Projektsteuerung; Trainee Prozessmanagement",
+                   "web3_queries": "Web3 Praktikum; Web3 Junior; Blockchain Junior; DePIN Praktikum; Crypto Operations; Solidity Junior; IoT Praktikum; Fintech Junior; Digitalisierung Praktikum"}[key]),
         )
 
 
@@ -383,7 +386,8 @@ def put_settings():
                "ba_api_key", "default_location", "default_query",
                "email_imap_host", "email_imap_port", "email_address",
                "email_password", "email_poll_interval", "exclude_keywords",
-               "prefer_companies", "prefer_keywords", "prefer_locations"}
+               "prefer_companies", "prefer_keywords", "prefer_locations",
+               "search_queries", "web3_queries"}
     with get_db() as db:
         for k, v in _clean(data, allowed).items():
             db.execute(
