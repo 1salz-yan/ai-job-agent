@@ -128,6 +128,11 @@ def init_db():
                 note TEXT DEFAULT '',
                 created_at TEXT DEFAULT ''
             );
+            CREATE TABLE IF NOT EXISTS rec_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                url_key TEXT UNIQUE, company TEXT DEFAULT '', title TEXT DEFAULT '',
+                last_seen TEXT DEFAULT ''
+            );
         """)
     # Ensure columns added in later versions
     try: db.execute("ALTER TABLE emails ADD COLUMN company_name TEXT DEFAULT ''")

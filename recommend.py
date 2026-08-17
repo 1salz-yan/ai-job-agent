@@ -27,27 +27,24 @@ def _job_type_from_title(title: str) -> str:
     return ""
 
 DB_PATH = BASE_DIR / "job_agent.db"
-# === ANPASSEN: Suchbegriffe für deinen Berufsbereich ===
-# Jeder Lauf wählt zufällig eine Teilmenge daraus → abwechslungsreiche Ergebnisse
-QUERIES = [
-    # Profession-related (technical Wirtschaftsingenieurwesen roles)
-    "Praktikum Projektmanagement",
-    "Junior Projektmanager",
-    "Trainee Wirtschaftsingenieur",
-    "Praktikum Prozessoptimierung",
-    "Praktikum Supply Chain",
-    "Junior Produktmanager",
-    "Praktikum Wirtschaftsingenieur",
-    "Werkstudent Wirtschaftsingenieur",
-    "Junior Process Engineer",
-    "Praktikum Operations",
-    "Junior Business Development",
-    "Praktikum Produktdaten",
-    "Junior Supply Chain",
-    "Praktikum Projektsteuerung",
-    "Trainee Prozessmanagement",
-]
-# Web3/blockchain/crypto — at least 2 of these are ALWAYS searched per run
+SEARCH_WORDS_PER_RUN = 9  # = 2 web3 + 7 other (random subsets)
+
+# Search terms are grouped by direction so every run samples across DIFFERENT
+# role families instead of 9 random terms all landing in one niche (e.g. all
+# Projektmanagement). Each run picks 1 term from every group, then fills the
+# remainder randomly — variety by construction.
+QUERY_GROUPS = {
+    "projekt": ["Praktikum Projektmanagement", "Junior Projektmanager",
+                "Praktikum Projektsteuerung", "Trainee Prozessmanagement"],
+    "supply": ["Praktikum Supply Chain", "Junior Supply Chain",
+               "Praktikum Supply Chain Management", "Praktikum Einkauf"],
+    "ops": ["Praktikum Operations", "Praktikum Prozessoptimierung",
+            "Praktikum Produktdaten", "Junior Process Engineer"],
+    "produkt": ["Junior Produktmanager", "Junior Business Development",
+                "Praktikum Business Development", "Trainee Wirtschaftsingenieur"],
+    "tech": ["Praktikum Wirtschaftsingenieur", "Praktikum Datenanalyse",
+             "Praktikum Digitalisierung", "Junior Data Analyst"],
+}
 WEB3_QUERIES = [
     "Web3 Praktikum",
     "Web3 Junior",
@@ -59,7 +56,8 @@ WEB3_QUERIES = [
     "Fintech Junior",
     "Digitalisierung Praktikum",
 ]
-SEARCH_WORDS_PER_RUN = 9  # = 2 web3 + 7 other (random subsets)
+# Legacy flat list (kept for settings fallback / docs)
+QUERIES = [q for group in QUERY_GROUPS.values() for q in group]
 
 
 def _url_key(url: str) -> str:
@@ -117,12 +115,33 @@ def main():
     all_results = []
     # Search terms come from settings (user-configurable); fall back to built-in defaults
     def _split(s): return [x.strip() for x in (s or "").split(";") if x.strip()]
-    queries_all = _split(settings.get("search_queries", "")) or QUERIES
+    # Grouped sampling: 1 term per role family (projekt/supply/ops/produkt/tech),
+    # then fill the rest randomly — every run spans DIFFERENT role directions.
+    # Legacy settings.search_queries (flat list) still feeds the pool if set.
+    settings_groups = {}
+    for g, terms in QUERY_GROUPS.items():
+        sg = _split(settings.get(f"search_group_{g}", ""))
+        settings_groups[g] = sg or terms
+    groups_pool = list(settings_groups.values())
+    legacy = _split(settings.get("search_queries", ""))
     web3_all = _split(settings.get("web3_queries", "")) or WEB3_QUERIES
-    # Always include ≥2 web3 queries, then random others → variety + web3 presence
     n_web3 = min(2, len(web3_all))
-    n_other = max(0, SEARCH_WORDS_PER_RUN - n_web3)
-    queries = random.sample(web3_all, n_web3) + random.sample(queries_all, min(n_other, len(queries_all)))
+    # 1 from every group (spread), then fill remaining slots from all pools.
+    # Total stays exactly SEARCH_WORDS_PER_RUN: first guarantee web3 quota, then fill.
+    picked = [random.choice(g) for g in groups_pool]
+    all_terms = [t for g in groups_pool for t in g] + legacy + web3_all
+    uniq_terms = list(dict.fromkeys(all_terms))
+    web3_picked = [q for q in picked if q in web3_all]
+    need_web3 = max(0, n_web3 - len(web3_picked))
+    if need_web3:
+        extra_w = [t for t in web3_all if t not in picked]
+        if extra_w:
+            picked = picked + random.sample(extra_w, min(need_web3, len(extra_w)))
+    slots = max(0, SEARCH_WORDS_PER_RUN - len(picked))
+    remaining = [t for t in uniq_terms if t not in picked]
+    fill = random.sample(remaining, min(slots, len(remaining)))
+    queries = picked + fill
+    random.shuffle(queries)
     for loc, loc_label in [(location, location or "Default"), ("", "Deutschland")]:
         print(f"🔍 Adzuna ({loc_label}) …", file=sys.stderr)
         for q in queries:
@@ -147,6 +166,15 @@ def main():
     existing_urls = {_url_key(r[0]) for r in db.execute(
         f"SELECT url FROM jobs WHERE url != '' AND status IN ({placeholders})", active
     ).fetchall()}
+    # Cross-run history: anything recommended in the last 14 days is NOT
+    # re-recommended — even if the user cleared the Merkliste, old picks don't
+    # instantly resurrect (was the top "还是那些岗位" complaint).
+    try:
+        existing_urls |= {r[0] for r in db.execute(
+            "SELECT url_key FROM rec_history WHERE last_seen > datetime('now', '-14 days')"
+        ).fetchall()}
+    except Exception:
+        pass  # table may not exist on very old DBs
     # Same-company same-normalized-title = the same role re-listed with a new ad id.
     existing_titles = {(r[0].strip().lower(), _norm_title(r[1])) for r in db.execute(
         f"SELECT company, title FROM jobs WHERE status IN ({placeholders})", active
@@ -237,8 +265,10 @@ def main():
 
     # 3d. Diversity guard: max 2 postings per company (bulk ads from one firm
     #     used to flood the list, e.g. 8x "KI-Berater" from the same GmbH).
+    #     Also: same company + same normalized title appears ONCE per run,
+    #     even when Adzuna lists it under multiple ad ids.
     from collections import Counter as _Counter
-    seen_key, by_company = set(), _Counter()
+    seen_key, seen_title, by_company = set(), set(), _Counter()
     # Companies already present in the active board count toward the 2-limit —
     # otherwise the same firms (Syntex, Basf…) would keep re-appearing every run.
     existing_company_counts = _Counter(
@@ -253,6 +283,10 @@ def main():
             continue
         seen_key.add(k)
         comp_key = str(j.get("company", "")).strip().lower()
+        t_key = (comp_key, _norm_title(j.get("title", "")))
+        if t_key in seen_title:
+            continue
+        seen_title.add(t_key)
         if by_company[comp_key] + existing_company_counts[comp_key] >= 2:
             continue
         by_company[comp_key] += 1
@@ -301,6 +335,16 @@ def main():
                                ensure_ascii=False),
                      _job_type_from_title(j["title"])),
                 )
+        except Exception:
+            pass
+    # Record what was recommended (cross-run dedup) — upsert by url_key
+    for j in top:
+        try:
+            db.execute(
+                "INSERT INTO rec_history (url_key, company, title, last_seen) VALUES (?, ?, ?, datetime('now')) "
+                "ON CONFLICT(url_key) DO UPDATE SET last_seen=datetime('now')",
+                (_url_key(j.get("url", "")), j.get("company", ""), j.get("title", "")),
+            )
         except Exception:
             pass
     db.commit()
