@@ -5,6 +5,7 @@ Alle Quellen liefern ein einheitliches Dict:
 {source, company, title, location, url, salary, description, employment_type, created}
 """
 import re
+import sys
 import requests
 from bs4 import BeautifulSoup
 
@@ -163,6 +164,52 @@ def fetch_url_text(url: str, max_chars: int = 12000) -> dict:
     if len(text) > max_chars:
         text = text[:max_chars] + " …"
     return {"title": title, "text": text}
+
+
+def search_arbeitnow(max_pages: int = 1) -> list:
+    """Arbeitnow job board API — free, no key, Germany-focused.
+    Returns ~176 jobs per page; keeps only entry-level/intern/student titles
+    (the candidate targets Praktikum/Junior/Trainee, not senior roles).
+    https://www.arbeitnow.com/blog/job-board-api
+    """
+    out, seen = [], set()
+    for page in range(1, max_pages + 1):
+        try:
+            r = requests.get(
+                f"https://www.arbeitnow.com/api/job-board-api?page={page}",
+                headers={"User-Agent": UA["User-Agent"]}, timeout=25,
+            )
+            r.raise_for_status()
+            jobs = r.json().get("data", [])
+        except Exception as e:
+            print(f"   ⚠️ Arbeitnow p{page}: {e}", file=sys.stderr)
+            break
+        if not jobs:
+            break
+        for j in jobs:
+            title = str(j.get("title", "") or "")
+            tl = title.lower()
+            if not any(w in tl for w in ["intern", "junior", "trainee", "werkstudent",
+                                         "praktikum", "student", "entry", "graduate", "working student"]):
+                continue
+            if any(w in tl for w in ["senior", "lead ", "head of", "principal", "director of"]):
+                continue
+            url = j.get("url", "") or ""
+            if not url or url in seen:
+                continue
+            seen.add(url)
+            out.append({
+                "source": "arbeitnow",
+                "company": j.get("company_name", "") or "",
+                "title": title,
+                "location": j.get("location", "") or "",
+                "url": url,
+                "salary": "",
+                "description": _clean_html(j.get("description", "") or ""),
+                "employment_type": "",
+                "created": j.get("created_at", "") or "",
+            })
+    return out
 
 
 # -------------------------------------------------------- RemoteOK

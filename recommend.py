@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / ".env")
 from ai_agent import ChatAgent
-from job_sources import search_adzuna, search_remoteok
+from job_sources import search_adzuna, search_remoteok, search_arbeitnow
 
 
 def _job_type_from_title(title: str) -> str:
@@ -91,6 +91,36 @@ def _row2dict(row):
     return dict(zip([c[0] for c in row.description], row))
 
 
+# Company-name normalization shared with app.py._normalize_company (kept local
+# so recommend.py stays standalone). Same-name variants collapse into one
+# company — otherwise "Lidl Stiftung" / "Lidl Stiftung & Co. KG" /
+# "Lidl Dienstleistung" all count separately and flood the Merkliste with
+# near-identical postings from one firm.
+_COMPANY_SUFFIXES = re.compile(r"\s*(?:Group\s*Recruiting|Recruiting|GmbH|AG|SE|KGaA|KG|& Co\.? KG|Co\.? KG)\s*$", re.I)
+COMPANY_MAP = {
+    "BMW Group": "BMW", "Bmw Group Recruiting": "BMW",
+    "Tesla Berlin": "Tesla",
+    "Mercedes Berlin": "Mercedes-Benz", "Mercedes Bremen": "Mercedes-Benz",
+    "Mercedes-Benz AG": "Mercedes-Benz",
+    "Lidl Recruiting": "Lidl",
+    "CocaCola Berlin": "Coca-Cola",
+    "Amadeus Fire AG": "Amadeus Fire",
+    "Rhenus Office Systems GmbH": "Rhenus Office Systems",
+    "Dach für Dach GmbH": "Dach für Dach",
+    "Draeger": "Dräger",
+    "Stadler Produktion": "Stadler",
+    "HRlab": "HR Lab",
+}
+
+
+def _norm_company(name: str) -> str:
+    n = (name or "").strip()
+    if not n:
+        return n
+    n = _COMPANY_SUFFIXES.sub("", n).strip()
+    return COMPANY_MAP.get(n, n)
+
+
 def main():
     db = sqlite3.connect(DB_PATH)
     db.row_factory = sqlite3.Row
@@ -142,7 +172,27 @@ def main():
     fill = random.sample(remaining, min(slots, len(remaining)))
     queries = picked + fill
     random.shuffle(queries)
-    for loc, loc_label in [(location, location or "Default"), ("", "Deutschland")]:
+    # Location search: if default_location is a specific city/region, search it
+    # FIRST (precision for the user's preferred cities), then Germany-wide as
+    # fallback. Avoids the old bug where default_location="Deutschland" made
+    # BOTH loops query Germany-wide (duplicate work, zero extra coverage).
+    search_locs = []
+    if location and location.lower() not in ("deutschland", "germany", "de", ""):
+        search_locs.append((location, location))
+    search_locs.append(("", "Deutschland"))
+    # Also search the user's preferred cities (prefer_locations) when they are
+    # specific cities — catches jobs that Germany-wide keyword search misses.
+    pref_locs_raw = settings.get("prefer_locations", "") or ""
+    for city in [c.strip() for c in pref_locs_raw.replace(",", " ").split() if c.strip()]:
+        cl = city.lower()
+        if cl in ("deutschland", "germany", "de"):
+            continue
+        if any(city.lower() in existing.lower() for _, existing in search_locs):
+            continue
+        if len(search_locs) >= 6:
+            break
+        search_locs.append((city, city))
+    for loc, loc_label in search_locs:
         print(f"🔍 Adzuna ({loc_label}) …", file=sys.stderr)
         for q in queries:
             try:
@@ -154,6 +204,11 @@ def main():
         all_results.extend(search_remoteok())
     except Exception as e:
         print(f"   ⚠️ RemoteOK: {e}", file=sys.stderr)
+    print("🔍 Arbeitnow (DE, entry-level) …", file=sys.stderr)
+    try:
+        all_results.extend(search_arbeitnow())
+    except Exception as e:
+        print(f"   ⚠️ Arbeitnow: {e}", file=sys.stderr)
 
     # 2. Dedup + filter out Werkstudent + exclude keywords
     # Active/wishlisted postings are never re-recommended; rejected/withdrawn
@@ -176,7 +231,7 @@ def main():
     except Exception:
         pass  # table may not exist on very old DBs
     # Same-company same-normalized-title = the same role re-listed with a new ad id.
-    existing_titles = {(r[0].strip().lower(), _norm_title(r[1])) for r in db.execute(
+    existing_titles = {(_norm_company(r[0]).lower(), _norm_title(r[1])) for r in db.execute(
         f"SELECT company, title FROM jobs WHERE status IN ({placeholders})", active
     ).fetchall()}
     exclude_raw = settings.get("exclude_keywords", "") or ""
@@ -184,12 +239,12 @@ def main():
     new = []
     for x in all_results:
         title = (x.get("title") or "").lower()
-        if "werkstudent" in title or "werkstudium" in title:
+        if "werkstudent" in title or "werkstudium" in title or "working student" in title:
             continue
         # Dedup: normalized URL key OR same company+normalized title as an active job.
         if _url_key(x.get("url", "")) in existing_urls:
             continue
-        if (str(x.get("company", "")).strip().lower(), _norm_title(x.get("title", ""))) in existing_titles:
+        if (_norm_company(x.get("company", "")).lower(), _norm_title(x.get("title", ""))) in existing_titles:
             continue
         # Exclude keywords (user preferences, e.g. HR)
         if exclude:
@@ -272,7 +327,7 @@ def main():
     # Companies already present in the active board count toward the 2-limit —
     # otherwise the same firms (Syntex, Basf…) would keep re-appearing every run.
     existing_company_counts = _Counter(
-        r[0].strip().lower() for r in db.execute(
+        _norm_company(r[0]).lower() for r in db.execute(
             f"SELECT company FROM jobs WHERE status IN ({placeholders})", active
         ).fetchall() if r[0]
     )
@@ -282,7 +337,7 @@ def main():
         if k in seen_key:
             continue
         seen_key.add(k)
-        comp_key = str(j.get("company", "")).strip().lower()
+        comp_key = _norm_company(j.get("company", "")).lower()
         t_key = (comp_key, _norm_title(j.get("title", "")))
         if t_key in seen_title:
             continue
@@ -329,7 +384,7 @@ def main():
                     "INSERT INTO jobs (company, title, location, url, source, "
                     "description, salary, status, match_score, match_reasons, job_type, created_at, updated_at) "
                     "VALUES (?, ?, ?, ?, ?, ?, ?, 'wishlist', ?, ?, ?, datetime('now'), datetime('now'))",
-                    (j["company"], j["title"], j.get("location", ""), j["url"], "adzuna",
+                    (_norm_company(j.get("company", "")), j["title"], j.get("location", ""), j["url"], j.get("source", "adzuna"),
                      j.get("description", ""), j.get("salary", ""), j["score"],
                      json.dumps({"score": j["score"], "summary": j.get("summary", "")},
                                ensure_ascii=False),
@@ -343,7 +398,7 @@ def main():
             db.execute(
                 "INSERT INTO rec_history (url_key, company, title, last_seen) VALUES (?, ?, ?, datetime('now')) "
                 "ON CONFLICT(url_key) DO UPDATE SET last_seen=datetime('now')",
-                (_url_key(j.get("url", "")), j.get("company", ""), j.get("title", "")),
+                (_url_key(j.get("url", "")), _norm_company(j.get("company", "")), j.get("title", "")),
             )
         except Exception:
             pass
