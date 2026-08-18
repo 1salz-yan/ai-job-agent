@@ -121,12 +121,38 @@ def _norm_company(name: str) -> str:
     return COMPANY_MAP.get(n, n)
 
 
+def _direction_of(job: dict, directions: list) -> str:
+    """Map a job to its target-profile direction (L1) by substring match on
+    title + description head. Returns 'other' when nothing matches."""
+    hay = ((job.get("title", "") or "") + " " + (job.get("description") or "")[:600]).lower()
+    for d in directions:
+        name = (d.get("name") or "").strip().lower()
+        if name and name in hay:
+            return name
+    return "other"
+
+
 def main():
     db = sqlite3.connect(DB_PATH)
     db.row_factory = sqlite3.Row
 
     rows = db.execute("SELECT key, value FROM settings").fetchall()
     settings = {r["key"]: r["value"] for r in rows}
+
+    # L1 target profile (P1) — directions/cities/companies with weights.
+    import json as _json
+    target = {}
+    try:
+        tr = db.execute("SELECT * FROM target_profile WHERE id=1").fetchone()
+        if tr:
+            target = dict(tr)
+            for col in ("role_types", "directions", "cities", "companies", "exclusions"):
+                try:
+                    target[col] = _json.loads(target.get(col) or "[]")
+                except Exception:
+                    target[col] = []
+    except Exception:
+        pass  # very old DB without the table
 
     app_id = settings.get("adzuna_app_id", "").strip()
     app_key = settings.get("adzuna_app_key", "").strip()
@@ -299,31 +325,35 @@ def main():
             boost += 4
         j["score"] = min(j["score"] + boost, 100)
 
-    # 3c. Pick top 10 — stratified sampling: ~6 high (≥70) + ~4 mid (50–69),
+    # 3c. Pick top 12 — stratified sampling: ~7 high (≥70) + ~5 mid (50–69),
     #     random within each band → quality floor with real variety per run.
     import random as _random
+    N_TOP = 12
     good = [j for j in scored if j.get("score", 0) >= 50]
-    if len(good) <= 10:
-        top = sorted(good, key=lambda x: (_loc_rank(x), -x["score"]))[:10]
+    if len(good) <= N_TOP:
+        top = sorted(good, key=lambda x: (_loc_rank(x), -x["score"]))[:N_TOP]
     else:
         high = [j for j in good if j.get("score", 0) >= 70]
         mid = [j for j in good if j.get("score", 0) < 70]
         top = []
         if high:
-            top += _random.sample(high, min(6, len(high)))
+            top += _random.sample(high, min(7, len(high)))
         if mid:
-            top += _random.sample(mid, min(4, len(mid)))
-        if len(top) < 10:  # top up from remaining
+            top += _random.sample(mid, min(5, len(mid)))
+        if len(top) < N_TOP:  # top up from remaining
             rest = [j for j in good if j not in top]
-            top += _random.sample(rest, min(10 - len(top), len(rest)))
+            top += _random.sample(rest, min(N_TOP - len(top), len(rest)))
         top.sort(key=lambda x: (_loc_rank(x), -x.get("score", 0)))
 
-    # 3d. Diversity guard: max 2 postings per company (bulk ads from one firm
-    #     used to flood the list, e.g. 8x "KI-Berater" from the same GmbH).
-    #     Also: same company + same normalized title appears ONCE per run,
-    #     even when Adzuna lists it under multiple ad ids.
+    # 3d. Diversity guard (L4 quotas from target profile):
+    #   - max 2 postings per company (bulk ads from one firm flood the list)
+    #   - same company + same normalized title appears ONCE per run
+    #   - max 3 per DIRECTION (from L1 target profile) — spread across themes
+    #   - at least 2 different cities in the final top (when possible)
     from collections import Counter as _Counter
-    seen_key, seen_title, by_company = set(), set(), _Counter()
+    directions = target.get("directions") or []
+    direction_names = [d.get("name") for d in directions if isinstance(d, dict) and d.get("name")]
+    seen_key, seen_title, by_company, by_direction = set(), set(), _Counter(), _Counter()
     # Companies already present in the active board count toward the 2-limit —
     # otherwise the same firms (Syntex, Basf…) would keep re-appearing every run.
     existing_company_counts = _Counter(
@@ -345,8 +375,52 @@ def main():
         if by_company[comp_key] + existing_company_counts[comp_key] >= 2:
             continue
         by_company[comp_key] += 1
+        if direction_names:
+            d_key = _direction_of(j, directions)
+            if by_direction[d_key] >= 3:
+                continue
+            by_direction[d_key] += 1
         top_diverse.append(j)
+    # Top up: quota-filtering may have dropped picks (e.g. 6 PM + 6 SC → 3+3).
+    # Fill from the remaining scored pool, applying the same guards.
+    if len(top_diverse) < N_TOP:
+        rest = [j for j in good if j not in top and _url_key(j.get("url", "")) not in seen_key]
+        rest.sort(key=lambda x: -x.get("score", 0))
+        for j in rest:
+            if len(top_diverse) >= N_TOP:
+                break
+            k = _url_key(j.get("url", ""))
+            if k in seen_key:
+                continue
+            seen_key.add(k)
+            comp_key = _norm_company(j.get("company", "")).lower()
+            t_key = (comp_key, _norm_title(j.get("title", "")))
+            if t_key in seen_title:
+                continue
+            seen_title.add(t_key)
+            if by_company[comp_key] + existing_company_counts[comp_key] >= 2:
+                continue
+            by_company[comp_key] += 1
+            if direction_names:
+                d_key = _direction_of(j, directions)
+                if by_direction[d_key] >= 3:
+                    continue
+                by_direction[d_key] += 1
+            top_diverse.append(j)
     top = top_diverse
+
+    # City diversity: if every pick is one city and a different city exists in
+    # the scored pool, swap the lowest-scored pick for one from the other city.
+    if len(top) >= 4 and len({str(j.get("location", "")).strip() for j in top}) < 2:
+        cities_in_pool = {str(j.get("location", "")).strip() for j in good if str(j.get("location", "")).strip()}
+        if len(cities_in_pool) >= 2:
+            main_city = str(top[0].get("location", "")).strip()
+            other_city = next(c for c in cities_in_pool if c != main_city)
+            others = [j for j in good if str(j.get("location", "")).strip() == other_city
+                      and j not in top and _url_key(j.get("url", "")) not in seen_key]
+            if others:
+                top[-1] = others[0]  # swap lowest pick for a different-city job
+                top.sort(key=lambda x: (_loc_rank(x), -x.get("score", 0)))
 
     # 4. Print
     print(f"\n📬 Job-Empfehlungen ({len(new)} neu / {len(all_results)} gescannt)\n")
