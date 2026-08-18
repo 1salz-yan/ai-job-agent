@@ -190,7 +190,8 @@ def _migrate_target_profile(db):
     directions = [{"name": k, "weight": 3} for k in fixed]
 
     # Cities: prefer_locations with weight 4 (the user's stated preference).
-    cities = [{"name": c, "weight": 4} for c in split_csv(s("prefer_locations"))]
+    cities = [{"name": c.replace("Münschen", "München"), "weight": 4}
+              for c in split_csv(s("prefer_locations"))]
 
     # Companies: prefer_companies (typo-fixed) — boost list.
     companies = [c.replace("Mecedes", "Mercedes") for c in split_csv(s("prefer_companies"))]
