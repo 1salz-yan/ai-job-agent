@@ -295,18 +295,15 @@ def main():
         all_results.extend(search_arbeitnow())
     except Exception as e:
         print(f"   ⚠️ Arbeitnow: {e}", file=sys.stderr)
-    # BA Jobbörse — only when a key is configured (free via BA developer portal).
-    ba_key = settings.get("ba_api_key", "").strip()
-    if ba_key:
-        print("🔍 BA Jobbörse …", file=sys.stderr)
-        for q in queries[:5]:  # BA token per call is slow — limit to 5 terms
-            try:
-                all_results.extend(search_ba(ba_key, q))
-            except Exception as e:
-                print(f"   ⚠️ BA {q}: {e}", file=sys.stderr)
-                break  # token/auth errors repeat for every term
-    else:
-        print("ℹ️ BA Jobbörse übersprungen (kein ba_api_key in Einstellungen).", file=sys.stderr)
+    # BA Jobbörse — keyless public API (old developer portal is dead, the
+    # jobsuche service itself is open). Always searched, no key needed.
+    print("🔍 BA Jobbörse …", file=sys.stderr)
+    for q in queries[:5]:
+        try:
+            all_results.extend(search_ba(q))
+        except Exception as e:
+            print(f"   ⚠️ BA {q}: {e}", file=sys.stderr)
+            break  # auth/rate errors repeat for every term
 
     # 2. Dedup + filter out Werkstudent + exclude keywords
     # Active/wishlisted postings are never re-recommended; rejected/withdrawn

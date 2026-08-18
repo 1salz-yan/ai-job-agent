@@ -72,45 +72,52 @@ def search_adzuna(app_id: str, app_key: str, query: str, location: str = "") -> 
 
 
 # -------------------------------------------------------- BA Jobbörse
-def _ba_token(api_key: str) -> str:
-    resp = requests.post(
-        "https://rest.arbeitsagentur.de/oauth/getToken",
-        data={"client_id": api_key, "client_secret": api_key, "grant_type": "client_credentials"},
-        timeout=30,
-    )
-    resp.raise_for_status()
-    return resp.json()["access_token"]
+# Public, keyless API — no registration needed. The BA's old developer portal
+# (jobsuche.arbeitsagentur.de/entwicklerportal) is DEAD (NXDOMAIN, 2026-08);
+# the jobsuche service itself is open with a fixed client id.
+# Docs: https://github.com/bundesAPI/jobsuche-api
+BA_CLIENT_ID = "jobboerse-jobsuche"
+BA_ENDPOINT = "https://rest.arbeitsagentur.de/jobboerse/jobsuche-service/pc/v6/jobs"
 
 
-def search_ba(api_key: str, query: str, location: str = "") -> list:
-    if not api_key:
-        raise RuntimeError(
-            "BA-Jobbörse-Key fehlt (Key über das Entwicklerportal der Arbeitsagentur beantragen, "
-            "dann in den Einstellungen eintragen)."
-        )
-    token = _ba_token(api_key)
-    params = {"was": query, "wo": location or "", "size": 20}
+def search_ba(query: str, location: str = "", api_key: str = "") -> list:
+    """Search the BA Jobbörse (largest German job database). No key required —
+    the API is public; api_key is kept as an optional parameter for
+    compatibility. Returns the uniform job dict schema."""
+    params = {"was": query, "size": 20}
+    if location:
+        params["wo"] = location  # empty wo="" causes HTTP 400 on v6
     resp = requests.get(
-        "https://rest.arbeitsagentur.de/jobboerse/jobsuche-service/v2/pc/jobs",
+        BA_ENDPOINT,
         params=params,
-        headers={"Authorization": f"Bearer {token}"},
+        headers={"X-API-Key": BA_CLIENT_ID, "User-Agent": UA["User-Agent"]},
         timeout=30,
     )
     resp.raise_for_status()
     data = resp.json()
     out = []
-    for s in data.get("stellenangebote", []):
+    for s in data.get("ergebnisliste", []):
+        # v6 field names are German camelCase: stellenangebotsTitel, firma,
+        # referenznummer, stellenlokationen[].adresse.ort
+        locs = s.get("stellenlokationen") or []
+        ort = ""
+        if locs:
+            adr = (locs[0].get("adresse") or {})
+            ort = " ".join(x for x in [adr.get("plz", ""), adr.get("ort", "")] if x)
         out.append(
             {
                 "source": "ba",
-                "company": s.get("arbeitgeber") or "",
-                "title": s.get("titel") or "",
-                "location": s.get("ort") or "",
-                "url": s.get("bewerbungsURL") or s.get("url") or "",
-                "salary": s.get("entgeltgruppe") or "",
-                "description": _clean_html(s.get("beschreibung", "")),
-                "employment_type": s.get("arbeitszeitmodelle", ""),
-                "created": s.get("veroeffentlicht", ""),
+                "company": s.get("firma") or "",
+                "title": s.get("stellenangebotsTitel") or "",
+                "location": ort,
+                # v6 has no detail URL in the list — build one from refnr
+                "url": f"https://www.arbeitsagentur.de/jobsuche/jobdetail/{s.get('referenznummer', '')}",
+                "salary": s.get("verguetungsangabe") or "",
+                # list API carries no description; the occupational category
+                # (alleBerufe) gives the AI scorer at least some signal
+                "description": "Berufsfeld: " + ", ".join(s.get("alleBerufe", []) or []),
+                "employment_type": "",
+                "created": s.get("datumErsteVeroeffentlichung") or "",
             }
         )
     return out
