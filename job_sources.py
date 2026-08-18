@@ -116,7 +116,36 @@ def search_ba(api_key: str, query: str, location: str = "") -> list:
 
 
 # -------------------------------------------------------- URL-Fetch
+# Sites that aggressively block server-side scraping (Cloudflare/PerimeterX).
+# For these, guide the user to paste the text instead of failing cryptically.
+SCRAPE_BLOCKED = {
+    "glassdoor": "Glassdoor blockiert automatische Abrufe (Cloudflare-Schutz). "
+                 "Bitte kopiere die Stellenbeschreibung und füge sie als Text ein.",
+    "linkedin": "LinkedIn blockiert automatische Abrufe. "
+                "Bitte kopiere die Stellenbeschreibung und füge sie als Text ein.",
+    "indeed": "Indeed blockiert automatische Abrufe (Captcha). "
+              "Bitte kopiere die Stellenbeschreibung und füge sie als Text ein.",
+    "kununu": "Kununu blockiert automatische Abrufe. "
+              "Bitte kopiere die Stellenbeschreibung und füge sie als Text ein.",
+    "xing": "XING blockiert automatische Abrufe. "
+            "Bitte kopiere die Stellenbeschreibung und füge sie als Text ein.",
+}
+
+
+def _blocked_hint(url: str) -> str:
+    """Return a friendly German hint if the URL's domain is a known
+    scrape-blocked site, else empty string."""
+    host = (url or "").lower()
+    for key, hint in SCRAPE_BLOCKED.items():
+        if key in host:
+            return hint
+    return ""
+
+
 def fetch_url_text(url: str, max_chars: int = 12000) -> dict:
+    hint = _blocked_hint(url)
+    if hint:
+        raise RuntimeError(hint)
     try:
         resp = requests.get(url, headers=UA, timeout=20)
         resp.raise_for_status()
