@@ -125,9 +125,13 @@ def _direction_of(job: dict, directions: list) -> str:
     """Map a job to its target-profile direction (L1) by substring match on
     title + description head. Returns 'other' when nothing matches."""
     hay = ((job.get("title", "") or "") + " " + (job.get("description") or "")[:600]).lower()
+    hay_nospace = re.sub(r"\s+", "", hay)
     for d in directions:
         name = (d.get("name") or "").strip().lower()
-        if name and name in hay:
+        if not name:
+            continue
+        # exact substring, plus a no-space variant so "Web 3" matches "Web3"
+        if name in hay or re.sub(r"\s+", "", name) in hay_nospace:
             return name
     return "other"
 
