@@ -84,6 +84,46 @@ $("#btn-save-prefs")?.addEventListener("click", async () => {
   } catch (err) { $("#pref-status").textContent = "❌ " + err.message; }
 });
 
+// ===== Zielbild (target profile) — L1 der Empfehlung v2 =====
+// Speicherformat in der UI: kommagetrennt, Gewichte als "Name:Zahl"
+// (z.B. "Projektmanagement:3, Web3:4"). Intern: Liste von {name, weight}.
+function tpToText(items) {
+  return (items || []).map((x) => (x.weight ? `${x.name}:${x.weight}` : x.name)).join(", ");
+}
+function tpFromText(text, defWeight) {
+  return (text || "").split(",").map((s) => s.trim()).filter(Boolean).map((s) => {
+    const m = s.match(/^(.*?):(\d+)$/);
+    return m ? { name: m[1].trim(), weight: parseInt(m[2], 10) } : { name: s, weight: defWeight };
+  });
+}
+async function loadTargetProfile() {
+  try {
+    const p = await api("/api/target_profile");
+    const setTxt = (id, arr) => { const el = $(id); if (el) el.value = tpToText(arr); };
+    setTxt("#tp-directions", p.directions);
+    setTxt("#tp-cities", p.cities);
+    setTxt("#tp-companies", p.companies);
+    setTxt("#tp-exclude", p.exclusions);
+    if ($("#tp-roles")) $("#tp-roles").value = (p.role_types || []).join(", ");
+    if ($("#tp-commute")) $("#tp-commute").value = p.max_commute || 0;
+  } catch (e) { /* silent */ }
+}
+$("#btn-save-target")?.addEventListener("click", async () => {
+  try {
+    const roles = $("#tp-roles").value.split(",").map((s) => s.trim()).filter(Boolean);
+    await api("/api/target_profile", { method: "PUT", body: {
+      role_types: roles,
+      directions: tpFromText($("#tp-directions").value, 3),
+      cities: tpFromText($("#tp-cities").value, 4),
+      companies: tpFromText($("#tp-companies").value, 6),
+      exclusions: tpFromText($("#tp-exclude").value, 0),
+      max_commute: parseInt($("#tp-commute").value || "0", 10) || 0,
+    }});
+    $("#tp-status").textContent = "✅ Zielbild gespeichert — gilt ab der nächsten Suche.";
+    toast("Zielbild gespeichert ✓");
+  } catch (err) { $("#tp-status").textContent = "❌ " + err.message; }
+});
+
 // Load dashboard when tab is shown
 const dashObserver = new MutationObserver(() => {
   if (!$("#tab-dashboard")?.hidden) loadDashboard();
@@ -817,7 +857,7 @@ $("#btn-analyze").addEventListener("click", async () => {
 /* ============================ INIT ============================ */
 (async function init() {
   try {
-    await Promise.all([refreshJobs(), loadDashboard(), loadPrefs(), loadProfile(), loadSettings()]);
+    await Promise.all([refreshJobs(), loadDashboard(), loadPrefs(), loadTargetProfile(), loadProfile(), loadSettings()]);
     // Pre-fill email settings form
     const s = await api("/api/settings");
     $("#em-host").value = s.email_imap_host || "imap.qq.com";

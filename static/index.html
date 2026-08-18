@@ -21,6 +21,7 @@
     <button class="tab active" data-tab="dashboard">📊 Dashboard</button>
     <button class="tab" data-tab="kanban">📋 Kanban</button>
     <button class="tab" data-tab="search">🔍 Jobsuche</button>
+    <button class="tab" data-tab="target">🎯 Zielbild</button>
     <button class="tab" data-tab="email">📬 Posteingang</button>
     <button class="tab" data-tab="analyze">📊 Analyse</button>
     <button class="tab" data-tab="profile">👤 Profil</button>
@@ -94,6 +95,32 @@
     </div>
     <div id="status-list" class="status-list"></div>
   </div>
+
+  <!-- ================= ZIELBILD ================= -->
+  <section id="tab-target" class="tab-panel" hidden>
+    <div class="card" style="max-width:720px">
+      <h2>🎯 Zielbild</h2>
+      <p class="muted" style="font-size:12px;margin:4px 0 12px">Eine Quelle der Wahrheit: wonach suchst du? Richtungen, Städte und Firmen mit Gewicht beeinflussen die Bewertung — je höher das Gewicht, desto stärker der Bonus. Kommagetrennt.</p>
+      <div class="pref-grid">
+        <label class="pref-field">🧩 Ziel-Rollentypen
+          <input id="tp-roles" type="text" placeholder="praktikum, junior, trainee"></label>
+        <label class="pref-field">💡 Richtungen (mit Gewicht: Name:3)
+          <input id="tp-directions" type="text" placeholder="z.B. Projektmanagement:3, Web3:4"></label>
+        <label class="pref-field">📌 Städte (mit Gewicht: Name:4)
+          <input id="tp-cities" type="text" placeholder="z.B. Berlin:4, München:3"></label>
+        <label class="pref-field">🏢 Wunsch-Firmen
+          <input id="tp-companies" type="text" placeholder="z.B. Siemens, BMW"></label>
+        <label class="pref-field">🚫 Ausschließen
+          <input id="tp-exclude" type="text" placeholder="z.B. HR, Personalwesen, Sachbearbeitung"></label>
+        <label class="pref-field">🚗 Max. Pendelweg (km, 0 = egal)
+          <input id="tp-commute" type="number" min="0" value="0"></label>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:10px">
+        <button id="btn-save-target" class="btn primary">Speichern</button>
+        <span id="tp-status" class="muted" style="font-size:11px"></span>
+      </div>
+    </div>
+  </section>
 
   <!-- ================= JOBSUCHE ================= -->
   <section id="tab-search" class="tab-panel" hidden>
@@ -276,6 +303,6 @@
 
 <div id="toast" hidden></div>
 <div id="js-status" style="position:fixed;top:0;right:0;background:var(--red);color:#fff;padding:4px 10px;font-size:11px;z-index:9999;border-radius:0 0 0 8px">⚠️ JS nicht geladen — bitte harten Refresh (Cmd+Shift+R) drücken</div>
-<script src="/static/app.js?v=light5"></script>
+<script src="/static/app.js?v=light6"></script>
 </body>
 </html>

@@ -133,10 +133,24 @@ def init_db():
                 url_key TEXT UNIQUE, company TEXT DEFAULT '', title TEXT DEFAULT '',
                 last_seen TEXT DEFAULT ''
             );
+            CREATE TABLE IF NOT EXISTS target_profile (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                role_types TEXT NOT NULL DEFAULT '["praktikum","junior","trainee"]',
+                directions TEXT NOT NULL DEFAULT '[]',
+                cities TEXT NOT NULL DEFAULT '[]',
+                companies TEXT NOT NULL DEFAULT '[]',
+                exclusions TEXT NOT NULL DEFAULT '[]',
+                max_commute INTEGER DEFAULT 0,
+                updated_at TEXT DEFAULT ''
+            );
         """)
     # Ensure columns added in later versions
     try: db.execute("ALTER TABLE emails ADD COLUMN company_name TEXT DEFAULT ''")
     except Exception: pass
+    # One-time migration: settings.prefer_* / search_queries → target_profile
+    # (P1 of the recommendation-v2 redesign — single source of truth).
+    if not db.execute("SELECT 1 FROM target_profile WHERE id=1").fetchone():
+        _migrate_target_profile(db)
     # Migrate legacy settings keys (deepseek_* → generic names)
     for old, new in [("deepseek_api_key", "api_key"), ("deepseek_model", "llm_model"),
                      ("deepseek_api_base", "api_base")]:
@@ -151,6 +165,57 @@ def init_db():
 
 def _now():
     return datetime.now().strftime("%Y-%m-%d %H:%M")
+
+
+def _migrate_target_profile(db):
+    """One-time: fold settings.prefer_*/exclude_keywords/search_queries into
+    target_profile (P1 of recommendation-v2). Runs only when the target_profile
+    row is absent. Legacy settings keys are kept (other code still reads them
+    until P2), the profile becomes the new single source of truth."""
+    def s(key, default=""):
+        row = db.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
+        return (row[0] if row else "") or default
+
+    def split_csv(v):
+        return [x.strip() for x in str(v).replace(";", ",").split(",") if x.strip()]
+
+    # Directions: prefer_keywords get weight 3, search_queries (role families)
+    # become directions with weight 2. Dedupe, fix known typos.
+    kw = split_csv(s("prefer_keywords"))
+    fixed = []
+    for k in kw:
+        k = k.replace("loT", "IoT").replace("Mecedes", "Mercedes")
+        if k and k not in fixed:
+            fixed.append(k)
+    directions = [{"name": k, "weight": 3} for k in fixed]
+
+    # Cities: prefer_locations with weight 4 (the user's stated preference).
+    cities = [{"name": c, "weight": 4} for c in split_csv(s("prefer_locations"))]
+
+    # Companies: prefer_companies (typo-fixed) — boost list.
+    companies = [c.replace("Mecedes", "Mercedes") for c in split_csv(s("prefer_companies"))]
+
+    # Exclusions: exclude_keywords verbatim.
+    exclusions = split_csv(s("exclude_keywords"))
+
+    import json as _json
+    db.execute(
+        "INSERT INTO target_profile (id, role_types, directions, cities, companies, "
+        "exclusions, max_commute, updated_at) VALUES (1, ?, ?, ?, ?, ?, 0, ?)",
+        (
+            _json.dumps(["praktikum", "junior", "trainee"], ensure_ascii=False),
+            _json.dumps(directions, ensure_ascii=False),
+            _json.dumps(cities, ensure_ascii=False),
+            _json.dumps(companies, ensure_ascii=False),
+            _json.dumps(exclusions, ensure_ascii=False),
+            _now(),
+        ),
+    )
+    # Commit immediately: this runs inside init_db's `with get_db()` block whose
+    # implicit commit is unreliable here (executescript + swallowed ALTER error
+    # interactions left the transaction open in testing). One-time migration —
+    # independent commit is the safe choice.
+    db.commit()
 
 
 def _seed_profile(db):
@@ -401,6 +466,51 @@ def put_settings():
                 (k, str(v)),
             )
     return jsonify(_get_settings())
+
+
+# ---- Job target profile (L1 of recommendation-v2)
+def _target_profile_row() -> dict:
+    with get_db() as db:
+        row = db.execute("SELECT * FROM target_profile WHERE id=1").fetchone()
+    if not row:
+        return {}
+    d = dict(row)
+    import json as _json
+    for col in ("role_types", "directions", "cities", "companies", "exclusions"):
+        try:
+            d[col] = _json.loads(d.get(col) or "[]")
+        except Exception:
+            d[col] = []
+    return d
+
+
+@app.get("/api/target_profile")
+def get_target_profile():
+    return jsonify(_target_profile_row())
+
+
+@app.put("/api/target_profile")
+def put_target_profile():
+    data = request.get_json(force=True, silent=True) or {}
+    import json as _json
+    cols = ("role_types", "directions", "cities", "companies", "exclusions")
+    clean = {}
+    for c in cols:
+        v = data.get(c)
+        if isinstance(v, (list, tuple)):
+            clean[c] = _json.dumps(list(v), ensure_ascii=False)
+    if "max_commute" in data:
+        try:
+            clean["max_commute"] = int(data["max_commute"])
+        except Exception:
+            pass
+    if not clean:
+        return jsonify(error="Keine gültigen Felder"), 400
+    clean["updated_at"] = _now()
+    sets = ", ".join(f"{k} = ?" for k in clean)
+    with get_db() as db:
+        db.execute(f"UPDATE target_profile SET {sets} WHERE id=1", list(clean.values()))
+    return jsonify(_target_profile_row())
 
 
 # ---- Jobs (Kanban)
