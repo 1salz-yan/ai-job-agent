@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / ".env")
 from ai_agent import ChatAgent
-from job_sources import search_adzuna, search_remoteok, search_arbeitnow
+from job_sources import search_adzuna, search_remoteok, search_arbeitnow, search_ba
 
 
 def _job_type_from_title(title: str) -> str:
@@ -295,6 +295,18 @@ def main():
         all_results.extend(search_arbeitnow())
     except Exception as e:
         print(f"   ⚠️ Arbeitnow: {e}", file=sys.stderr)
+    # BA Jobbörse — only when a key is configured (free via BA developer portal).
+    ba_key = settings.get("ba_api_key", "").strip()
+    if ba_key:
+        print("🔍 BA Jobbörse …", file=sys.stderr)
+        for q in queries[:5]:  # BA token per call is slow — limit to 5 terms
+            try:
+                all_results.extend(search_ba(ba_key, q))
+            except Exception as e:
+                print(f"   ⚠️ BA {q}: {e}", file=sys.stderr)
+                break  # token/auth errors repeat for every term
+    else:
+        print("ℹ️ BA Jobbörse übersprungen (kein ba_api_key in Einstellungen).", file=sys.stderr)
 
     # 2. Dedup + filter out Werkstudent + exclude keywords
     # Active/wishlisted postings are never re-recommended; rejected/withdrawn
@@ -307,13 +319,20 @@ def main():
     existing_urls = {_url_key(r[0]) for r in db.execute(
         f"SELECT url FROM jobs WHERE url != '' AND status IN ({placeholders})", active
     ).fetchall()}
-    # Cross-run history: anything recommended in the last 14 days is NOT
-    # re-recommended — even if the user cleared the Merkliste, old picks don't
-    # instantly resurrect (was the top "还是那些岗位" complaint).
+    # Cross-run history (P4 incremental): ANYTHING seen before is NOT scored
+    # again — the pipeline only evaluates genuinely new postings. Exception:
+    # rejected/withdrawn jobs stay re-eligible (user may re-apply; the board
+    # rows are upserted, not duplicated). Active/wishlisted postings are
+    # already excluded above via existing_urls.
     try:
         existing_urls |= {r[0] for r in db.execute(
-            "SELECT url_key FROM rec_history WHERE last_seen > datetime('now', '-14 days')"
+            "SELECT url_key FROM rec_history"
         ).fetchall()}
+        # re-eligible: rejected/withdrawn URLs come back into play
+        re_eligible = {_url_key(r[0]) for r in db.execute(
+            "SELECT url FROM jobs WHERE url != '' AND status IN ('rejected','withdrawn')"
+        ).fetchall()}
+        existing_urls -= re_eligible
     except Exception:
         pass  # table may not exist on very old DBs
     # Same-company same-normalized-title = the same role re-listed with a new ad id.
