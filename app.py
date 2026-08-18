@@ -143,6 +143,13 @@ def init_db():
                 max_commute INTEGER DEFAULT 0,
                 updated_at TEXT DEFAULT ''
             );
+            CREATE TABLE IF NOT EXISTS feedback (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                job_id INTEGER, direction TEXT DEFAULT '', city TEXT DEFAULT '',
+                company TEXT DEFAULT '', action TEXT NOT NULL,
+                applied INTEGER DEFAULT 0,
+                created_at TEXT DEFAULT ''
+            );
         """)
     # Ensure columns added in later versions
     try: db.execute("ALTER TABLE emails ADD COLUMN company_name TEXT DEFAULT ''")
@@ -355,6 +362,43 @@ def _job_row(job_id: int) -> dict:
     if not row:
         raise JobAgentError(f"Stelle #{job_id} nicht gefunden.")
     return dict(row)
+
+
+def _log_feedback(db, job_id: int, action: str):
+    """P3: record a user action signal (apply/delete) with the job's
+    direction/city/company snapshot — the job row may be gone by aggregation
+    time (deleted), so denormalize now."""
+    try:
+        row = db.execute(
+            "SELECT title, description, location, company FROM jobs WHERE id = ?",
+            (job_id,),
+        ).fetchone()
+        if not row:
+            return
+        import json as _json
+        tp = db.execute("SELECT directions FROM target_profile WHERE id=1").fetchone()
+        directions = []
+        if tp and tp[0]:
+            try:
+                directions = _json.loads(tp[0])
+            except Exception:
+                directions = []
+        # direction via same logic as recommend.py (title+desc substring)
+        hay = f"{row['title'] or ''} {row['description'] or ''}"[:600].lower()
+        hay_ns = re.sub(r"\s+", "", hay)
+        direction = "other"
+        for d in directions:
+            name = (d.get("name") or "").strip().lower()
+            if name and (name in hay or re.sub(r"\s+", "", name) in hay_ns):
+                direction = name
+                break
+        db.execute(
+            "INSERT INTO feedback (job_id, direction, city, company, action, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (job_id, direction, row["location"] or "", row["company"] or "", action, _now()),
+        )
+    except Exception:
+        pass  # feedback must never break the main flow
 
 
 def _clean(payload: dict, allowed: set) -> dict:
@@ -587,12 +631,17 @@ def patch_job(job_id):
             _log_status(db, job_id, old.get("status", ""),
                         vals["status"], "manual",
                         vals.get("notes", ""))
+            # P3 feedback: moving a job into the application pipeline = apply
+            if vals["status"] in ("applied", "confirmed", "interview_1",
+                                  "interview_2", "interview_3", "assessment", "offer"):
+                _log_feedback(db, job_id, "apply")
     return jsonify(_job_row(job_id))
 
 
 @app.delete("/api/jobs/<int:job_id>")
 def delete_job(job_id):
     with get_db() as db:
+        _log_feedback(db, job_id, "delete")
         db.execute("DELETE FROM jobs WHERE id = ?", (job_id,))
     return jsonify(ok=True)
 

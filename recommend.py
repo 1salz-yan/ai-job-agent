@@ -136,6 +136,55 @@ def _direction_of(job: dict, directions: list) -> str:
     return "other"
 
 
+def _apply_feedback(db, target: dict):
+    """P3: fold user action signals into direction weights.
+
+    Reads feedback rows (apply/delete per direction) from the last 30 days and
+    adjusts target_profile.directions weights:
+      weight += 0.5 per apply, weight -= 1.0 per delete (deleting a job is a
+      stronger negative signal than applying is positive), clamped to [1, 5].
+    Old feedback decays: rows older than 30 days are ignored, and the weight
+    drifts back toward 3 (neutral) each run, so preferences can change.
+    Idempotent — repeated runs converge to the same weights.
+    """
+    import json as _json
+    dirs = target.get("directions") or []
+    if not dirs:
+        return
+    # weight = 3 + 0.5*apply - 1.0*delete, decayed toward 3 per run
+    # Only UNPROCESSED feedback counts (applied=0), then rows are marked —
+    # otherwise the same signals re-apply every run and weights drift.
+    stats = {}
+    for r in db.execute(
+        "SELECT direction, action, COUNT(*) c FROM feedback "
+        "WHERE created_at > datetime('now', '-30 days') AND applied = 0 "
+        "GROUP BY direction, action"
+    ).fetchall():
+        stats.setdefault(r["direction"], {})[r["action"]] = r["c"]
+    changed = False
+    for d in dirs:
+        name = (d.get("name") or "").strip().lower()
+        if not name or name not in stats:
+            continue
+        s = stats[name]
+        delta = 0.5 * s.get("apply", 0) - 1.0 * s.get("delete", 0)
+        if delta:
+            # int(x+0.5) = round-half-up (Python round() is banker's rounding,
+            # which silently drops a 0.5 delta on even weights: round(4.5)=4)
+            w = max(1, min(5, int((d.get("weight") or 3) + delta + 0.5)))
+            if w != d.get("weight"):
+                d["weight"] = w
+                changed = True
+    if changed:
+        db.execute(
+            "UPDATE target_profile SET directions=?, updated_at=datetime('now') WHERE id=1",
+            (_json.dumps(dirs, ensure_ascii=False),),
+        )
+    # Mark processed (even without weight change — the signal was consumed)
+    db.execute("UPDATE feedback SET applied=1 WHERE applied=0")
+    db.commit()
+
+
 def main():
     db = sqlite3.connect(DB_PATH)
     db.row_factory = sqlite3.Row
@@ -157,6 +206,13 @@ def main():
                     target[col] = []
     except Exception:
         pass  # very old DB without the table
+
+    # P3 feedback loop: adjust direction weights from real user actions
+    # (apply = +1, delete = -1), exponential decay toward neutral over time.
+    try:
+        _apply_feedback(db, target)
+    except Exception:
+        pass  # feedback must never break the recommendation run
 
     app_id = settings.get("adzuna_app_id", "").strip()
     app_key = settings.get("adzuna_app_key", "").strip()
