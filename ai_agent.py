@@ -24,20 +24,51 @@ class JobAgentError(Exception):
     pass
 
 
-def _detect_lang(text: str) -> str:
-    """Detect whether a job description is English or German (default: de)."""
+def _detect_lang(text: str, title: str = "") -> str:
+    """Detect whether a job description is English or German (default: de).
+    Empty description falls back to the title, so an English job TITLE like
+    'Internship / Thesis Automation' still yields an English CV."""
     t = (text or "")[:4000].lower()
+    if not t:
+        t = (title or "")[:4000].lower()
     if not t:
         return "de"
     de_markers = ["stelle", "bewerbung", "praktikum", "wir bieten", "aufgaben",
                   "anforderungen", "wir suchen", "ihr profil", "einsatzort",
-                  "vergütung", "ab sofort", "team", "unternehmen"]
+                  "vergütung", "ab sofort", "team", "unternehmen",
+                  "werkstudent", "befristet"]
     en_markers = ["job", "responsibilities", "requirements", "we offer", "you will",
                   "about us", "what you'll", "qualifications", "internship",
-                  "the role", "your profile", "apply now", "full-time", "part-time"]
+                  "the role", "your profile", "apply now", "full-time", "part-time",
+                  "intern", "trainee", "thesis", "engineering", "program"]
     de_hits = sum(1 for m in de_markers if m in t)
     en_hits = sum(1 for m in en_markers if m in t)
     return "en" if en_hits > de_hits else "de"
+
+
+# German function words — if these are dense in an English-target document,
+# the LLM left source text untranslated. Used as a post-generation check.
+_DE_FUNCTION_WORDS = [
+    "als", "und", "der ", "die ", "das ", "für", "mit", "auf", "von", "bei",
+    "eine", "einen", "nicht", "auch", "sowie", "ihre", "wurde", "werden",
+    "durch", "über", "aus", "nach", "im ", "am ", "zur", "zum", "des ", "dem ",
+    "ein ", "einer", "kenntnisse", "ausbildung", "erfahrung", "abschluss",
+    "sprachen", "aufgaben", "eigenprojekt", "gebaut", "projektmanagement",
+]
+
+
+def _german_ratio(text: str) -> float:
+    """Fraction of lines that look German (dense German function words)."""
+    lines = [l.strip() for l in (text or "").splitlines() if len(l.strip()) > 20]
+    if not lines:
+        return 0.0
+    german_lines = 0
+    for l in lines:
+        low = l.lower()
+        hits = sum(1 for w in _DE_FUNCTION_WORDS if w in low)
+        if hits >= 2:  # 2+ German function words = a German line
+            german_lines += 1
+    return german_lines / len(lines)
 
 
 class ChatAgent:
@@ -128,12 +159,14 @@ class ChatAgent:
         # Use user's own wording as base if available
         base = (profile.get("cv_base") or "").strip()
         base_note = f"=== KANDIDATIN EIGENE FORMULIERUNG (BLUEPRINT) ===\n{base}\n\n" if base else ""
-        lang = _detect_lang(job.get("description", ""))
+        lang = _detect_lang(job.get("description", ""), job.get("title", ""))
         lang_rule = (
             "Die Stellenanzeige ist auf ENGLISCH → schreibe das Anschreiben vollständig auf "
-            "Englisch (Betreff 'Application: [Role]', Anrede 'Dear Hiring Manager', Gruß 'Best regards').\n"
+            "Englisch (Betreff 'Application: [Role]', Anrede 'Dear Hiring Manager', Gruß 'Best regards'). "
+            "Übersetze AUCH zitierte Projekte/Erfahrungen ins Englische — kein Deutsch im fertigen Brief.\n"
             if lang == "en" else
-            "Die Stellenanzeige ist auf Deutsch → schreibe das Anschreiben auf Deutsch.\n"
+            "Die Stellenanzeige ist auf Deutsch → schreibe das Anschreiben auf Deutsch. "
+            "Übersetze AUCH zitierte Projekte/Erfahrungen ins Deutsche — kein Englisch im fertigen Brief.\n"
         )
         raw = self._chat_text([{"role": "system", "content": (
             "Du schreibst ein Anschreiben für eine Wirtschaftsingenieurin. "
@@ -167,12 +200,16 @@ class ChatAgent:
     def lebenslauf(self, profile: dict, job: dict) -> dict:
         base = (profile.get("cv_base") or "").strip()
         base_note = f"=== KANDIDATIN EIGENE FORMULIERUNG (BLUEPRINT) ===\n{base}\n\n" if base else ""
-        lang = _detect_lang(job.get("description", ""))
+        lang = _detect_lang(job.get("description", ""), job.get("title", ""))
         lang_rule = (
             "Die Stellenanzeige ist auf ENGLISCH → schreibe den gesamten Lebenslauf auf Englisch "
-            "(Sektionsnamen: Experience, Education, Projects, Skills & Languages).\n"
+            "(Sektionsnamen: Experience, Education, Projects, Skills & Languages). "
+            "WICHTIG: Übersetze AUCH alle Projekt-Beschreibungen aus dem Pool ins Englische — "
+            "im fertigen Lebenslauf darf KEIN Deutsch vorkommen.\n"
             if lang == "en" else
-            "Die Stellenanzeige ist auf Deutsch → schreibe den Lebenslauf auf Deutsch.\n"
+            "Die Stellenanzeige ist auf Deutsch → schreibe den Lebenslauf auf Deutsch. "
+            "WICHTIG: Übersetze AUCH alle Projekt-Beschreibungen aus dem Pool ins Deutsche — "
+            "im fertigen Lebenslauf darf KEIN Englisch vorkommen.\n"
         )
         text = self._chat_text([{"role": "system", "content": (
             "Du passt einen Lebenslauf an eine Stellenanzeige an. "
@@ -200,6 +237,16 @@ class ChatAgent:
             "=== PROFIL (inkl. Projekt-Pool) ===\n" + self._profile_text(profile) + "\n\n"
             "=== STELLE ===\n" + self._job_text(job)
         )}], temperature=0.5, max_tokens=8000)
+        # Post-check: for English-target CVs, if too many lines are still
+        # German (the LLM often leaves project/experience bullets untranslated
+        # when it reuses the user's own wording), run a translation pass.
+        if lang == "en" and _german_ratio(text) > 0.25:
+            text = self._chat_text([{"role": "system", "content": (
+                "Du bist Übersetzerin für einen englischen Lebenslauf. Übersetze die "
+                "deutschen Passagen INS Englische. Behalte Struktur, Fakten, Zahlen, "
+                "Namen und Formatierung exakt bei. KEINE Markdown-Zeichen. Gib NUR "
+                "den übersetzten Lebenslauf zurück."
+            )}, {"role": "user", "content": text}], temperature=0.2, max_tokens=8000)
         return {"text": text}
 
     def interview(self, profile: dict, job: dict) -> dict:
