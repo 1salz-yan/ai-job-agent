@@ -360,10 +360,10 @@ def export_lebenslauf(job: dict, content: str) -> Path:
 
     # Render right-column sections
     # (2026-08: removed the old keep() filter that dropped projects containing
-    # drone/blockchain/crypto/solana when the JD didn't mention them — it
-    # overrode the AI's job-specific project selection and silently deleted
-    # projects like Machine Economy (DePIN/Solana) from the export. The AI
-    # already picks projects per JD via 'Passt zu' tags; export must be WYSIWYG.)
+    # drone/blockchain/crypto/solana keywords when the JD didn't mention them —
+    # it overrode the AI's job-specific project selection and silently deleted
+    # the candidate's flagship blockchain project from exports. The AI already
+    # picks projects per JD via 'Passt zu' tags; export must be WYSIWYG.)
     p_raw = sections.get("projekte", [])
     filtered_proj = []
     buf = []
