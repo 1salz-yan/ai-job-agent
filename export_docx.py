@@ -359,25 +359,21 @@ def export_lebenslauf(job: dict, content: str) -> Path:
                 p.paragraph_format.space_after = Pt(1)
 
     # Render right-column sections
-    # Filter Projekte: remove drone/blockchain unless JD mentions them
-    jt = (job.get("title") or "").lower()
-    jd = (job.get("description") or "").lower()
-    def keep(line):
-        l = line.lower()
-        for kw in ["drohne", "drone", "blockchain", "crypto", "solana"]:
-            if kw in l and kw not in jt and kw not in jd:
-                return False
-        return True
+    # (2026-08: removed the old keep() filter that dropped projects containing
+    # drone/blockchain/crypto/solana when the JD didn't mention them — it
+    # overrode the AI's job-specific project selection and silently deleted
+    # projects like Machine Economy (DePIN/Solana) from the export. The AI
+    # already picks projects per JD via 'Passt zu' tags; export must be WYSIWYG.)
     p_raw = sections.get("projekte", [])
     filtered_proj = []
     buf = []
     for s in p_raw:
         if s and not s.startswith("-") and "|" in s:
-            if buf and keep(buf[0]): filtered_proj.extend(buf)
+            if buf: filtered_proj.extend(buf)
             buf = [s]
         elif s:
             buf.append(s)
-    if buf and keep(buf[0]): filtered_proj.extend(buf)
+    if buf: filtered_proj.extend(buf)
 
     right_section("Berufserfahrung", sections.get("erfahrung", []))
     right_section("Ausbildung", sections.get("ausbildung", []))
