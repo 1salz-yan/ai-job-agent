@@ -45,10 +45,27 @@ def search_adzuna(app_id: str, app_key: str, query: str, location: str = "") -> 
         "results_per_page": 20,
         "content-type": "application/json",
     }
-    resp = requests.get(
-        "https://api.adzuna.com/v1/api/jobs/de/search/1", params=params, timeout=30
-    )
-    resp.raise_for_status()
+    # Adzuna throttles bursts of requests with intermittent 503 (not quota —
+    # single calls succeed). Retry twice with a short backoff.
+    import time
+    resp = None
+    last_err = None
+    for attempt in range(3):
+        try:
+            resp = requests.get(
+                "https://api.adzuna.com/v1/api/jobs/de/search/1", params=params, timeout=30
+            )
+            if resp.status_code != 503:
+                resp.raise_for_status()
+                break
+            last_err = RuntimeError(f"503 von Adzuna (Versuch {attempt+1}/3)")
+        except requests.RequestException as e:
+            last_err = e
+            if "503" not in str(e):
+                raise
+        time.sleep(1 + attempt)  # 1s, 2s backoff
+    if resp is None or resp.status_code == 503:
+        raise last_err or RuntimeError("Adzuna 503 nach 3 Versuchen")
     data = resp.json()
     out = []
     for r in data.get("results", []):
