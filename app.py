@@ -686,8 +686,9 @@ def create_draft(job_id):
 
 @app.post("/api/jobs/<int:job_id>/export/<kind>")
 def export_docx(job_id, kind):
-    """Export Anschreiben or CV as .docx. kind: anschreiben | lebenslauf"""
-    if kind not in ("anschreiben", "lebenslauf"):
+    """Export Anschreiben / Lebenslauf / Interview-Fragen as .docx.
+    kind: anschreiben | lebenslauf | interview"""
+    if kind not in ("anschreiben", "lebenslauf", "interview"):
         return jsonify(error="Ungültiger Typ"), 400
     job = _job_row(job_id)
     # Find latest draft of this kind, or the exact draft the user clicked
@@ -706,8 +707,9 @@ def export_docx(job_id, kind):
             ).fetchone()
     if not row:
         return jsonify(error=f"Kein {kind} generiert. Bitte zuerst generieren."), 400
-    from export_docx import export_anschreiben, export_lebenslauf
-    fn = export_anschreiben if kind == "anschreiben" else export_lebenslauf
+    from export_docx import export_anschreiben, export_lebenslauf, export_interview
+    fn = {"anschreiben": export_anschreiben, "lebenslauf": export_lebenslauf,
+          "interview": export_interview}[kind]
     path = fn(job, row["content"])
     return jsonify(ok=True, path=str(path))
 

@@ -29,3 +29,6 @@ Bewerbung/
 # Editor
 .idea/
 .vscode/
+
+# Runtime logs
+*.log

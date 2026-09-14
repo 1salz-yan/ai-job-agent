@@ -489,3 +489,79 @@ def export_anschreiben(job: dict, content: str) -> Path:
 
     doc.save(str(path))
     return path
+
+
+def export_interview(job: dict, content: str) -> Path:
+    """Interview-Vorbereitung als .docx: pro Block Frage (fett) + Antwort-Hinweis (grau).
+
+    Eingabeformat des Drafts (app.py /api/ai/interview):
+        Frage 1: <Frage>
+        → Hinweis: <Hinweis>
+        (Leerzeile)
+        Frage 2: ...
+    """
+    folder = _folder(job)
+    company = _short_company(job.get("company") or "Firma").strip().replace(" ", "_")
+    path = folder / f"Interview_{_profile_name().replace(' ', '_')}_{company}{_role_slug(job)}.docx"
+
+    doc = _make_doc()
+    doc.styles["Normal"].font.size = Pt(10)
+    GRAY = RGBColor(0x59, 0x59, 0x59)
+
+    def line(text, size=Pt(10), bold=False, color=None, space=2):
+        p = doc.add_paragraph()
+        run = p.add_run(text)
+        run.font.name = FONT; run.font.size = size
+        run.bold = bold
+        if color:
+            run.font.color.rgb = color
+        p.paragraph_format.space_after = Pt(space)
+        return p
+
+    line("Interview-Vorbereitung", size=Pt(16), bold=True, space=2)
+    sub = f"{job.get('company') or ''} — {job.get('title') or ''}".strip(" —")
+    if sub:
+        line(sub, size=Pt(11), color=GRAY, space=1)
+    meta = " · ".join(x for x in [(job.get("location") or "").strip(),
+                                  datetime.now().strftime("%-d.%-m.%Y")] if x)
+    if meta:
+        line(meta, size=Pt(9), color=GRAY, space=12)
+
+    # Draft-Text in Frage/Hinweis-Blöcke zerlegen
+    q_re = re.compile(r"^\s*(?:Frage|Question)\s*(\d+)\s*[:.)]\s*(.*)$", re.I)
+    h_re = re.compile(r"^\s*(?:→|->|=>|-)?\s*Hinweis\s*[:.]?\s*(.*)$", re.I)
+    blocks: list = []
+    for raw in (content or "").split("\n"):
+        l = raw.strip()
+        if not l:
+            continue
+        m = q_re.match(l)
+        if m:
+            blocks.append({"q": m.group(2).strip(), "hint": ""})
+            continue
+        m = h_re.match(l)
+        if m and blocks:
+            blocks[-1]["hint"] = (blocks[-1]["hint"] + " " + m.group(1).strip()).strip()
+            continue
+        if blocks:
+            blocks[-1]["hint"] = (blocks[-1]["hint"] + " " + l).strip()
+        else:
+            blocks.append({"q": l, "hint": ""})
+
+    if not blocks:  # Fallback: Rohtext als Absätze (nie leer exportieren)
+        for para in [p.strip() for p in (content or "").split("\n\n") if p.strip()]:
+            line(para, size=Pt(10), space=8)
+    else:
+        for i, b in enumerate(blocks, 1):
+            line(f"{i}. {b['q']}", size=Pt(11), bold=True, space=2)
+            if b["hint"]:
+                p = doc.add_paragraph()
+                r = p.add_run("Hinweis: ")
+                r.font.name = FONT; r.font.size = Pt(9.5); r.bold = True; r.font.color.rgb = GRAY
+                r2 = p.add_run(b["hint"])
+                r2.font.name = FONT; r2.font.size = Pt(9.5); r2.font.color.rgb = GRAY
+                p.paragraph_format.space_after = Pt(10)
+                p.paragraph_format.left_indent = Cm(0.5)
+
+    doc.save(str(path))
+    return path
