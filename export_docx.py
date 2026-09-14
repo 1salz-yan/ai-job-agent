@@ -527,26 +527,28 @@ def export_interview(job: dict, content: str) -> Path:
     if meta:
         line(meta, size=Pt(9), color=GRAY, space=12)
 
-    # Draft-Text in Frage/Hinweis-Blöcke zerlegen
+    # Draft-Text in Frage/Hinweis-Blöcke zerlegen. Leerzeile = Blockgrenze:
+    # Folgezeilen ohne Marker gelten als Umbruch des Hinweistexts NUR innerhalb
+    # desselben Absatzes (sonst würde reiner Fließtext zu einem Hint verschmelzen).
     q_re = re.compile(r"^\s*(?:Frage|Question)\s*(\d+)\s*[:.)]\s*(.*)$", re.I)
-    h_re = re.compile(r"^\s*(?:→|->|=>|-)?\s*Hinweis\s*[:.]?\s*(.*)$", re.I)
+    h_re = re.compile(r"^\s*(?:→|->|=>|-)?\s*(?:Hinweis|Hint)\s*[:.]?\s*(.*)$", re.I)
     blocks: list = []
+    new_para = True
     for raw in (content or "").split("\n"):
         l = raw.strip()
         if not l:
+            new_para = True
             continue
         m = q_re.match(l)
         if m:
             blocks.append({"q": m.group(2).strip(), "hint": ""})
-            continue
-        m = h_re.match(l)
-        if m and blocks:
+        elif (m := h_re.match(l)) and blocks:
             blocks[-1]["hint"] = (blocks[-1]["hint"] + " " + m.group(1).strip()).strip()
-            continue
-        if blocks:
+        elif blocks and not new_para:
             blocks[-1]["hint"] = (blocks[-1]["hint"] + " " + l).strip()
         else:
             blocks.append({"q": l, "hint": ""})
+        new_para = False
 
     if not blocks:  # Fallback: Rohtext als Absätze (nie leer exportieren)
         for para in [p.strip() for p in (content or "").split("\n\n") if p.strip()]:
