@@ -93,17 +93,50 @@ def _short_company(name: str) -> str:
     return n
 
 
+def _job_day(job: dict) -> str:
+    """YYMMDD aus dem Bewerbungsdatum (jobs.created_at), Fallback: heute.
+    Akzeptiert '2026-09-05 15:35' und das Altformat '26-09-05 12:00'."""
+    m = re.match(r"^(\d{4}|\d{2})-(\d{2})-(\d{2})", str(job.get("created_at") or "").strip())
+    if m:
+        y, mo, d = m.groups()
+        return (y[2:] if len(y) == 4 else y) + mo + d
+    return datetime.now().strftime("%y%m%d")
+
+
 def _folder(job: dict) -> Path:
-    """Create folder: YYMMDD_Company_City[_Role] — Role-Teil verhindert
-    Überschreiben bei mehreren Bewerbungen am selben Tag bei derselben Firma."""
-    now = datetime.now().strftime("%y%m%d")
+    """Ordner der Bewerbung: YYMMDD_Company_City[_Role].
+
+    Das Datum kommt aus created_at des Jobs, NICHT aus heute: ein Re-Export
+    (z.B. Interview-Fragen Tage später) landet damit neben Anschreiben/CV
+    derselben Bewerbung statt in einem neuen Datumsordner. Neue Bewerbung =
+    neuer Ordner.
+    Bewusst KEIN Verzeichnis-Listing: der launchd-Server darf ~/Desktop
+    nicht auflisten (macOS gibt EPERM auf opendir) — Schreiben geht, Lesen
+    nicht. Der Ordnername ist darum rein aus Job-Daten ableitbar."""
     company = _short_company(job.get("company") or "Firma").strip().replace(" ", "_")
     loc = (job.get("location") or "").strip()
     city = loc.split(",")[-1].strip() if "," in loc else loc
     city = (city or "Ort").replace(" ", "_")
-    path = _export_dir() / f"{now}_{company}_{city}{_role_slug(job)}"
+    path = _export_dir() / f"{_job_day(job)}_{company}_{city}{_role_slug(job)}"
     path.mkdir(parents=True, exist_ok=True)
     return path
+
+
+def _save(doc, path: Path) -> Path:
+    """docx speichern, ohne bei Schreibrechten zu crashen.
+
+    Der launchd-Server darf in ~/Desktop bestehende, von macOS mit
+    com.apple.quarantine markierte Dateien nicht überschreiben
+    (OSError Errno 11 'Resource deadlock avoided' / EPERM). In dem Fall wird
+    auf '<name>_neu.docx' ausgewichen — die neue Datei liegt daneben, statt
+    dass der Export mit einem 500 endet."""
+    try:
+        doc.save(str(path))
+        return path
+    except OSError:
+        alt = path.with_name(f"{path.stem}_neu{path.suffix}")
+        doc.save(str(alt))
+        return alt
 
 
 def _make_doc():
@@ -379,8 +412,7 @@ def export_lebenslauf(job: dict, content: str) -> Path:
     right_section("Ausbildung", sections.get("ausbildung", []))
     right_section("Projekte", filtered_proj)
 
-    doc.save(str(path))
-    return path
+    return _save(doc, path)
 
 
 # ============================================================
@@ -487,8 +519,7 @@ def export_anschreiben(job: dict, content: str) -> Path:
     doc.add_paragraph()
     line("Anlagen: Lebenslauf, Immatrikulationsbescheinigung, Notenspiegel, relevante Zeugnisse")
 
-    doc.save(str(path))
-    return path
+    return _save(doc, path)
 
 
 def export_interview(job: dict, content: str) -> Path:
@@ -565,5 +596,4 @@ def export_interview(job: dict, content: str) -> Path:
                 p.paragraph_format.space_after = Pt(10)
                 p.paragraph_format.left_indent = Cm(0.5)
 
-    doc.save(str(path))
-    return path
+    return _save(doc, path)
